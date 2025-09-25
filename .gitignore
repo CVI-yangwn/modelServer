@@ -1,0 +1,6 @@
+__pycache__
+logs
+cache_imgs
+models/weights
+temp
+config
