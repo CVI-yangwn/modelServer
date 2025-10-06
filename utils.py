@@ -24,7 +24,7 @@ def post_local_sync(request_data: dict):
         model_name = request_data.get("model")
         rul = model2url[model_name]
 
-        client = OpenAI(api_key="no need", base_url=rul)
+        client = OpenAI(api_key="no need", base_url=rul, max_retries=0, timeout=1000)
         response = client.chat.completions.create(
             **request_data,
         )

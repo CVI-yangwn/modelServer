@@ -3,15 +3,15 @@
 "gemini-2.0-flash", "gemini-2.5-flash", "gemini-2.5-pro"
 """
 
-__all__ = ['ModelBase', 'Qwen2_5_VL_3B', 'Qwen2_5_VL_7B', 'Qwen2_5_VL_32B',
-           'Qwen3_14B']
+__all__ = ['ModelBase', 'name_to_model_class']
 
 import os
 _current_dir = os.path.abspath(os.path.dirname(__file__))
 
 from .model_base import ModelBase
 from .qwen2_5 import Qwen2_5_VL
-from .qwen3 import Qwen3
+from .qwen3 import Qwen3, Qwen3_VL
+from .deepseek import DeepSeek_VL
 
 class LazyModel:
     def __init__(self, model_class:ModelBase, weight_path, **kwargs):
@@ -29,4 +29,21 @@ class LazyModel:
 Qwen2_5_VL_3B = LazyModel(Qwen2_5_VL, os.path.join(_current_dir, 'weights', 'Qwen2.5-VL-3B'))
 Qwen2_5_VL_7B = LazyModel(Qwen2_5_VL, os.path.join(_current_dir, 'weights', 'Qwen2.5-VL-7B'))
 Qwen2_5_VL_32B = LazyModel(Qwen2_5_VL, os.path.join(_current_dir, 'weights', 'Qwen2.5-VL-32B'))
-Qwen3_14B = LazyModel(Qwen3, os.path.join(_current_dir, 'weights', 'Qwen3-14B'), enable_thinking=True)
+Lingshu_7B = LazyModel(Qwen2_5_VL, "/mnt/shared_models/Lingshu-7B")
+HuatuoGPT_Vision_7B = LazyModel(Qwen2_5_VL, "/mnt/shared_models/HuatuoGPT-Vision-7B")
+
+Qwen3_14B = LazyModel(Qwen3, "/mnt/shared_models/Qwen3-14B", enable_thinking=True)
+Qwen3_VL_30B_A3B_Instruct = LazyModel(Qwen3_VL, "/mnt/shared_models/Qwen3-VL-30B-A3B-Instruct")
+
+DeepSeek_VL2 = LazyModel(DeepSeek_VL, "/mnt/shared_models/deepseek-vl2")
+
+name_to_model_class = {
+    "Qwen2.5-VL-3B": Qwen2_5_VL_3B,
+    "Qwen2.5-VL-7B": Qwen2_5_VL_7B,
+    "Qwen2.5-VL-32B": Qwen2_5_VL_32B,
+    "Lingshu-7B": Lingshu_7B,
+    "HuatuoGPT-Vision-7B": HuatuoGPT_Vision_7B,
+    "Qwen3-14B": Qwen3_14B,
+    "Qwen3-VL-30B-A3B-Instruct": Qwen3_VL_30B_A3B_Instruct,
+    "DeepSeek-VL2": DeepSeek_VL2,
+}

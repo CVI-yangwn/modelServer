@@ -206,16 +206,14 @@ class LLMAPI:
 
 if __name__ == "__main__":
     # Initialize the client
-    llm = LLMAPI(
-        model_name="Qwen3-14B",
-        base_url="http://172.31.233.64:2559/local",
-        api_key="root",
-    )
     # llm = LLMAPI(
     #     model_name="Qwen3-14B",
-    #     base_url="http://172.31.233.64:5521/v1",
+    #     base_url="http://172.31.233.64:2559/local",
     #     api_key="root",
     # )
+    llm = LLMAPI(model_name="Lingshu-7B",
+            api_key="root",
+            base_url="http://172.31.58.8:5523/v1")
 
     # --- Example 1: Simple text question ---
     print("\n--- Text-only Example ---")

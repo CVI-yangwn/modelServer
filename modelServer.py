@@ -15,17 +15,10 @@ from models import *
 
 _current_dir = os.path.abspath(os.path.dirname(__file__))
 
-os.environ["CUDA_VISIBLE_DEVICES"] = "3,4,5,6"
+# os.environ["CUDA_VISIBLE_DEVICES"] = "7"
 SELECTED_MODEL_NAME = "Qwen3-14B" # Choose the model you want to deploy
 SERVER_PORT = 5521
 SERVER_ADDRESS = "0.0.0.0" # Listen on all interfaces
-
-name_to_model_class = {
-    "Qwen2.5-VL-3B": Qwen2_5_VL_3B,
-    "Qwen2.5-VL-7B": Qwen2_5_VL_7B,
-    "Qwen2.5-VL-32B": Qwen2_5_VL_32B,
-    "Qwen3-14B": Qwen3_14B,
-}
 
 # --- Base Handler ---
 class BaseHandler(tornado.web.RequestHandler):
@@ -176,10 +169,14 @@ class ChatCompletionHandler(BaseHandler):
                     save_img_path = save_cache_img(content_item['image_url']['url'], str(i), "temp")
                     images_path.append(save_img_path)
 
-            if len(images_path) == 0:
-                answer = self.model.ask_only_text(question)
-            else:
-                answer = self.model.ask_with_images(question, images_path)
+            try:
+                if len(images_path) == 0:
+                    answer = self.model.ask_only_text(question)
+                else:
+                    answer = self.model.ask_with_images(question, images_path)
+            except Exception as e:
+                self.logger.error(f"Model inference error: {e}")
+                raise e
             
             # 清理本地保存的图片
             for img_path in images_path:

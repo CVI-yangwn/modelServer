@@ -2,7 +2,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 from .model_base import ModelBase
 
 class Qwen3(ModelBase):
-    def __init__(self, model_path, enable_thinking=False):
+    def __init__(self, model_path, enable_thinking=True):
         super().__init__(model_path)
         self.enable_thinking = enable_thinking
 
@@ -33,7 +33,17 @@ class Qwen3(ModelBase):
             **model_inputs,
             max_new_tokens=32768
         )
-        output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist() 
+        output_ids = generated_ids[0][len(model_inputs.input_ids[0]):].tolist()
 
         # the result will begin with thinking content in <think></think> tags, followed by the actual response
         return self.tokenizer.decode(output_ids, skip_special_tokens=True)
+    
+from transformers import Qwen3VLMoeForConditionalGeneration, AutoProcessor
+from .qwen2_5 import Qwen2_5_VL
+class Qwen3_VL(Qwen2_5_VL):
+    def __init__(self, model_path):
+        super().__init__(model_path)
+
+    def _load_model(self):
+        self.model = Qwen3VLMoeForConditionalGeneration.from_pretrained(self.model_path, torch_dtype="auto", device_map="auto")
+        self.processor = AutoProcessor.from_pretrained(self.model_path)
