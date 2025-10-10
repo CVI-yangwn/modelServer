@@ -162,11 +162,13 @@ class ChatCompletionHandler(BaseHandler):
 
             images_path = []
             question = ""
+
+            unique_folder_name = str(uuid.uuid4())
             for i, content_item in enumerate(content_list):
                 if content_item.get("type") == "text":
                     question = content_item.get("text")
                 elif content_item.get("type") == "image_url":
-                    save_img_path = save_cache_img(content_item['image_url']['url'], str(i), "temp")
+                    save_img_path = save_cache_img(content_item['image_url']['url'], str(i), unique_folder_name)
                     images_path.append(save_img_path)
 
             try:

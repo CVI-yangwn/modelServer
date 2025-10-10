@@ -211,18 +211,18 @@ if __name__ == "__main__":
     #     base_url="http://172.31.233.64:2559/local",
     #     api_key="root",
     # )
-    llm = LLMAPI(model_name="Lingshu-7B",
+    llm = LLMAPI(model_name="Lingshu-32B",
             api_key="root",
-            base_url="http://172.31.58.8:5523/v1")
+            base_url="http://172.31.58.9:5521/v1")
 
     # --- Example 1: Simple text question ---
     print("\n--- Text-only Example ---")
-    answer_text = llm.chat("你是谁？请用中文回答。")
+    answer_text = llm.chat("What's your name?")
     print("Model Response:", answer_text)
 
     # --- Example 2: Ask a follow-up question (demonstrates history) ---
     print("\n--- Follow-up Example ---")
-    follow_up_answer = llm.chat("你能做什么？")
+    follow_up_answer = llm.chat("What are you doing?")
     print("Model Response:", follow_up_answer)
 
     # Clear history for a new conversation
