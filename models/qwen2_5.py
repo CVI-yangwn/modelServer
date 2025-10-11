@@ -45,7 +45,7 @@ class Qwen2_5_VL(ModelBase):
         )
         return output_text
 
-    def ask_with_images(self, question:str, images:list):
+    def ask_with_images(self, question:str, images:list, history=[]):
         """
         args:
             question: str, the question to ask
@@ -58,6 +58,8 @@ class Qwen2_5_VL(ModelBase):
                 "content": img_msg + [{"type": "text", "text": question}],
             }
         ]
+        if history:
+            messages = messages + history
         return self.generate(messages)[0]
     
     def ask_with_videos(self, question:str, videos:list, **kwargs):
@@ -80,11 +82,13 @@ class Qwen2_5_VL(ModelBase):
         ]
         return self.generate(messages)[0]
 
-    def ask_only_text(self, question:str):
+    def ask_only_text(self, question:str, history=[]):
         messages = [
             {
                 "role": "user",
                 "content": [{"type": "text", "text": question}],
             }
         ]
+        if history:
+            messages = history + messages
         return self.generate(messages)[0]

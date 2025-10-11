@@ -15,11 +15,13 @@ class Qwen3(ModelBase):
             device_map="auto"
         )
 
-    def ask_only_text(self, question:str):
+    def ask_only_text(self, question:str, history=[]):
         # prepare the model input
         messages = [
             {"role": "user", "content": question}
         ]
+        if history:
+            messages = history + messages
         text = self.tokenizer.apply_chat_template(
             messages,
             tokenize=False,

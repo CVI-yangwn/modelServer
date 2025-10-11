@@ -44,7 +44,7 @@ class DeepSeek_VL(ModelBase):
         # print(f"{prepare_inputs['sft_format'][0]}", answer)
         return answer
 
-    def ask_with_images(self, question: str, images: list):
+    def ask_with_images(self, question: str, images: list, history=[]):
         # multiple images/interleaved image-text
         conversation = [
             {

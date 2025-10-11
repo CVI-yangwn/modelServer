@@ -236,7 +236,7 @@ class localHandler(BaseHandler):
         """非流式处理，集成密钥管理"""
         username = getattr(self, 'username', 'unknown_user')
         model_name = request_data.get("model")
-        messages = request_data.get("messages")
+        # messages = request_data.get("messages")
         try:
             if self.key_manager._check_and_update_user_access(username, model_name):
                 

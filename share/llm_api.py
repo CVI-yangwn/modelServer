@@ -56,8 +56,8 @@ class LLMAPI:
             encoded_image = self._encode_image_to_base64(img_source)
             if encoded_image:
                 user_content.append({
-                    "type": "image_url",
-                    "image_url": {"url": encoded_image}
+                    "type": "image",
+                    "image": encoded_image
                 })
         
         # Process videos
@@ -86,7 +86,7 @@ class LLMAPI:
         assistant_response = self._generate(**kwargs)
         
         # Create and store the assistant's response
-        assistant_message = {"role": "assistant", "content": assistant_response}
+        assistant_message = {"role": "assistant", "content": [{"type": "text", "text": assistant_response}]}
         self.history.append(assistant_message)
         
         return assistant_response
@@ -206,38 +206,41 @@ class LLMAPI:
 
 if __name__ == "__main__":
     # Initialize the client
-    # llm = LLMAPI(
-    #     model_name="Qwen3-14B",
-    #     base_url="http://172.31.233.64:2559/local",
-    #     api_key="root",
-    # )
-    llm = LLMAPI(model_name="Lingshu-32B",
-            api_key="root",
-            base_url="http://172.31.58.9:5521/v1")
+    llm = LLMAPI(
+        model_name="Qwen2.5-VL-7B",
+        base_url="http://172.31.233.64:2559/local",
+        api_key="root",
+    )
+    # llm = LLMAPI(model_name="Lingshu-32B",
+    #         api_key="root",
+    #         base_url="http://172.31.58.9:5521/v1")
 
-    # --- Example 1: Simple text question ---
-    print("\n--- Text-only Example ---")
-    answer_text = llm.chat("What's your name?")
-    print("Model Response:", answer_text)
+    # # --- Example 1: Simple text question ---
+    # print("\n--- Text-only Example ---")
+    # answer_text = llm.chat("What's your name?")
+    # print("Model Response:", answer_text)
 
-    # --- Example 2: Ask a follow-up question (demonstrates history) ---
-    print("\n--- Follow-up Example ---")
-    follow_up_answer = llm.chat("What are you doing?")
-    print("Model Response:", follow_up_answer)
+    # # --- Example 2: Ask a follow-up question (demonstrates history) ---
+    # print("\n--- Follow-up Example ---")
+    # follow_up_answer = llm.chat("What just I asked you?")
+    # print("Model Response:", follow_up_answer)
 
     # Clear history for a new conversation
     llm.clear_history()
 
     # --- Example 3: Image question ---
-    # print("\n--- Image Example ---")
+    print("\n--- Image Example ---")
     # Make sure this image path is correct on your system
-    # image_path = "/home/zhouyz/ywn_code/normal_image.png" 
-    # if os.path.exists(image_path):
-    #     answer_image = llm.chat("请详细描述这张图片。", images=[image_path])
-    #     print("Model Response:", answer_image)
-    # else:
-    #     print(f"Image not found at {image_path}, skipping image example.")
+    image_path = "/data/yangwennuo/code/MNL/genWhat/OIP-C.jpg" 
+    if os.path.exists(image_path):
+        answer_image = llm.chat("请详细描述这张图片。", images=[image_path])
+        print("Model Response:", answer_image)
+    else:
+        print(f"Image not found at {image_path}, skipping image example.")
     
+    answer_image = llm.chat("这张图片有什么特别的地方吗？")
+    print("Model Response:", answer_image)
+
     # --- Example 4: Video question (optional) ---
     # print("\n--- Video Example ---")
     # # Make sure this video path is correct on your system

@@ -18,10 +18,10 @@ from collections import defaultdict
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/"
 
 def post_local_sync(request_data: dict):
+    with open(os.path.join(_current_dir, "config", "local_request.json"), "r") as f:
+        model2url = json.load(f)
+    model_name = request_data.get("model")
     try:
-        with open(os.path.join(_current_dir, "config", "local_request.json"), "r") as f:
-            model2url = json.load(f)
-        model_name = request_data.get("model")
         rul = model2url[model_name]
 
         client = OpenAI(api_key="no need", base_url=rul, max_retries=0, timeout=1000)
@@ -29,7 +29,11 @@ def post_local_sync(request_data: dict):
             **request_data,
         )
         return response.choices[0].message.content
-    except Exception as e:
+    except KeyError as e:
+        logger = set_logger(f"{model_name}")
+        logger.error(f"cann't find the key name {e} in local_request.json")
+        raise ValueError("This is a mistake in config file, please contact the administrator~")
+    except:
         logger = set_logger(f"{model_name}")
         logger.error(f"Error in post_local_sync: {e}")
         raise ValueError("")

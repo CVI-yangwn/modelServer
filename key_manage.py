@@ -182,17 +182,17 @@ class ApiKeyManager:
         user_record = self._user_records[username]
         
         # 如果是新的一天，重置每日剩余量
-        if user_record.last_access_date != today:
-            default_amounts = {
-                "gemini-2.0-flash": 200,
-                "gemini-2.5-flash": 250,
-                "gemini-2.5-pro": 200,
-                "gemini-2.5-flash-lite": 1000,
-                "Qwen2.5-VL-3B": 300,
-                "Qwen2.5-VL-7B": 200,
-                "Qwen2.5-VL-32B": 100
-            }
-            # user_record.reset_daily_if_needed(default_amounts)
+        # if user_record.last_access_date != today:
+        #     default_amounts = {
+        #         "gemini-2.0-flash": 200,
+        #         "gemini-2.5-flash": 250,
+        #         "gemini-2.5-pro": 200,
+        #         "gemini-2.5-flash-lite": 1000,
+        #         "Qwen2.5-VL-3B": 300,
+        #         "Qwen2.5-VL-7B": 200,
+        #         "Qwen2.5-VL-32B": 100
+        #     }
+        #     user_record.reset_daily_if_needed(default_amounts)
         
         # 检查指定模型的剩余量
         remaining = user_record.get_remaining(model_name)

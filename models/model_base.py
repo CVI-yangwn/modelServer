@@ -9,8 +9,17 @@ class ModelBase:
     def _load_model(self):
         raise NotImplementedError
 
-    def ask_with_images(self, question:str, images:list):
+    def ask_with_images(self, question:str, images:list, history=[]):
+        """
+        args:
+            history: [
+                {
+                    content
+                    role
+                }
+            ]
+        """
         raise NotImplementedError
 
-    def ask_only_text(self, question:str):
+    def ask_only_text(self, question:str, history=[]):
         raise NotImplementedError

@@ -16,7 +16,7 @@ from models import *
 _current_dir = os.path.abspath(os.path.dirname(__file__))
 
 # os.environ["CUDA_VISIBLE_DEVICES"] = "7"
-SELECTED_MODEL_NAME = "Qwen3-14B" # Choose the model you want to deploy
+SELECTED_MODEL_NAME = "Qwen2.5-VL-7B" # Choose the model you want to deploy
 SERVER_PORT = 5521
 SERVER_ADDRESS = "0.0.0.0" # Listen on all interfaces
 
@@ -154,9 +154,14 @@ class ChatCompletionHandler(BaseHandler):
         messages = request_data.get("messages")
 
         try:
-            user_message = messages[0] # Assuming the first message is the user's
+            # split messages
+            history_messages: list = messages[:-1]  # =[] if have no history
+            latest_user_message: dict = messages[-1]
 
-            content_list = user_message.get("content", [])
+            if latest_user_message.get("role") != "user":
+                raise ValueError("The last message must be from the 'user'.")
+
+            content_list = latest_user_message.get("content", [])
             if not content_list:
                 raise ValueError("Missing 'content' in user message.")
 
@@ -167,15 +172,26 @@ class ChatCompletionHandler(BaseHandler):
             for i, content_item in enumerate(content_list):
                 if content_item.get("type") == "text":
                     question = content_item.get("text")
-                elif content_item.get("type") == "image_url":
-                    save_img_path = save_cache_img(content_item['image_url']['url'], str(i), unique_folder_name)
+                # add the latest images to message
+                elif content_item.get("type") == "image":
+                    save_img_path = save_cache_img(content_item['image'], str(i), unique_folder_name)
                     images_path.append(save_img_path)
+
+            # add historical images
+            if history_messages:
+                for i, hm in enumerate(history_messages):
+                    his_content_list = hm.get('content', [])
+                    
+                    for j, content_item in enumerate(his_content_list):
+                        if content_item.get("type") == "image":
+                            save_img_path = save_cache_img(content_item['image'], f'h{i}_{j}', unique_folder_name)
+                            content_item['image'] = "file://"+save_img_path
 
             try:
                 if len(images_path) == 0:
-                    answer = self.model.ask_only_text(question)
+                    answer = self.model.ask_only_text(question, history=history_messages)
                 else:
-                    answer = self.model.ask_with_images(question, images_path)
+                    answer = self.model.ask_with_images(question, images_path, history=history_messages)
             except Exception as e:
                 self.logger.error(f"Model inference error: {e}")
                 raise e
