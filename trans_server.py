@@ -119,8 +119,6 @@ class BaseHandler(tornado.web.RequestHandler):
                 try:
                     await asyncio.wait_for(asyncio.shield(task), timeout=5)
                 except asyncio.TimeoutError:
-                    # 5 秒过去了，任务还没完成，发送心跳
-                    # 使用空格作为心跳对大多数JSON解析器是安全的
                     self.write(" ")
                     await self.flush()
             

@@ -207,7 +207,7 @@ class LLMAPI:
 if __name__ == "__main__":
     # Initialize the client
     llm = LLMAPI(
-        model_name="Qwen2.5-VL-7B",
+        model_name="Lingshu-7B",
         base_url="http://172.31.233.64:2559/local",
         api_key="root",
     )
