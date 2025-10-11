@@ -56,8 +56,8 @@ class LLMAPI:
             encoded_image = self._encode_image_to_base64(img_source)
             if encoded_image:
                 user_content.append({
-                    "type": "image",
-                    "image": encoded_image
+                    "type": "image_url",
+                    "image_url": {"url": encoded_image}
                 })
         
         # Process videos

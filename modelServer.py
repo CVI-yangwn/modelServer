@@ -173,8 +173,8 @@ class ChatCompletionHandler(BaseHandler):
                 if content_item.get("type") == "text":
                     question = content_item.get("text")
                 # add the latest images to message
-                elif content_item.get("type") == "image":
-                    save_img_path = save_cache_img(content_item['image'], str(i), unique_folder_name)
+                elif content_item.get("type") == "image_url":
+                    save_img_path = save_cache_img(content_item['image_url']['url'], str(i), unique_folder_name)
                     images_path.append(save_img_path)
 
             # add historical images
@@ -183,9 +183,12 @@ class ChatCompletionHandler(BaseHandler):
                     his_content_list = hm.get('content', [])
                     
                     for j, content_item in enumerate(his_content_list):
-                        if content_item.get("type") == "image":
-                            save_img_path = save_cache_img(content_item['image'], f'h{i}_{j}', unique_folder_name)
+                        if content_item.get("type") == "image_url":
+                            save_img_path = save_cache_img(content_item['image_url']['url'], f'h{i}_{j}', unique_folder_name)
                             content_item['image'] = "file://"+save_img_path
+                            content_item['type'] = 'image'
+                            content_item.pop('image_url')
+                            # print(history_messages)
 
             try:
                 if len(images_path) == 0:
