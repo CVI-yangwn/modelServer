@@ -5,6 +5,8 @@ import mimetypes, base64
 import numpy as np
 import cv2
 
+os.environ['no_proxy'] = "172.31.233.64"
+
 class LLMAPI:
 
     def __init__(self, model_name, api_key, base_url) -> None:
@@ -18,11 +20,18 @@ class LLMAPI:
             api_key=api_key,
             base_url=base_url,
             max_retries=0, # We handle retries manually
-            timeout=100
+            timeout=100,
         )
         self.error_occur = 0
         self.history = [] # Initialize conversation history
         print("Client has been created.")
+
+    def set_system_prompt(self, prompt):
+        if not self.history:
+            self.history.append({"role": "system", "content": [{"type": "text", "text": prompt}]})
+        else:
+            self.history.insert(0, {"role": "system", "content": [{"type": "text", "text": prompt}]})
+            print("warning: history is not None, system prompt might be overridden.")
 
     def chat(self, question: str, 
              images: list = None, 
@@ -95,22 +104,40 @@ class LLMAPI:
         """
         Private method to make the API call and handle errors/retries.
         """
+        stream = kwargs.get("stream", True)
         try:
             response = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=self.history,
-                stream=False,
+                stream=stream,
                 **kwargs # Pass any extra parameters like temperature, max_tokens
             )
-            answer = response.choices[0].message.content
-            self.error_occur = 0  # Reset error count on success
-            return answer
+            if not stream:
+                answer = response.choices[0].message.content
+                self._check_answer(answer)
+                self.error_occur = 0  # Reset error count on success
+                return answer
+            else:
+                answer = ''
+                for chunk in response:
+                    answer += chunk.choices[0].delta.content
+                self._check_answer(answer)
+                self.error_occur = 0  # Reset error count on success
+                return answer
+            
         except Exception as e:
             self.error_occur += 1
             print(f"Error during API call: {e}")
             self._process_error()
-
+            
             return self._generate(**kwargs)
+
+    def _check_answer(self, answer: str):
+        """
+        Validates the model's answer.
+        """
+        if not answer or len(answer.strip()) < 1:
+            raise
 
     def _process_error(self, sleep_time=3, max_errors=20):
         """
@@ -201,19 +228,18 @@ class LLMAPI:
         Clears the conversation history.
         """
         self.history = []
+        self.error_occur = 0  # Reset error count on success
         print("Conversation history has been cleared.")
 
 
 if __name__ == "__main__":
     # Initialize the client
-    llm = LLMAPI(
-        model_name="Lingshu-7B",
-        base_url="http://172.31.233.64:2559/local",
-        api_key="root",
-    )
-    # llm = LLMAPI(model_name="Lingshu-32B",
+    llm = LLMAPI(model_name="HuatuoGPT-Vision-7B",
+                api_key="root",
+                base_url="http://172.31.233.64:2559/local")
+    # llm = LLMAPI(model_name="HuatuoGPT-Vision-7B",
     #         api_key="root",
-    #         base_url="http://172.31.58.9:5521/v1")
+    #         base_url="http://172.31.58.8:5521/v1")
 
     # # --- Example 1: Simple text question ---
     # print("\n--- Text-only Example ---")

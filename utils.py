@@ -15,6 +15,13 @@ SUPPORT_MODELS = ("Qwen2.5-VL-3B", "Qwen2.5-VL-7B", "Qwen2.5-VL-32B",
 from openai import OpenAI, AsyncOpenAI
 from collections import defaultdict
 
+def set_no_proxy(url: str):
+    if url.startswith("http://"):
+        host = url.strip('http://').split(':')[0]
+        os.environ["no_proxy"] = host
+    else:
+        pass
+
 GEMINI_URL = "https://generativelanguage.googleapis.com/v1beta/"
 
 def post_local_sync(request_data: dict):
@@ -22,9 +29,10 @@ def post_local_sync(request_data: dict):
         model2url = json.load(f)
     model_name = request_data.get("model")
     try:
-        rul = model2url[model_name]
+        url = model2url[model_name]
+        set_no_proxy(url)
 
-        client = OpenAI(api_key="no need", base_url=rul, max_retries=0, timeout=1000)
+        client = OpenAI(api_key="no need", base_url=url, max_retries=0, timeout=1000)
         response = client.chat.completions.create(
             **request_data,
         )
@@ -37,6 +45,28 @@ def post_local_sync(request_data: dict):
         logger = set_logger(f"{model_name}")
         logger.error(f"Error in post_local_sync: {e}")
         raise ValueError(f"Error in post_local_sync: {e}")
+
+def post_local_stream(request_data: dict):
+
+    with open(os.path.join(_current_dir, "config", "local_request.json"), "r") as f:
+        model2url = json.load(f)
+    model_name = request_data.get("model")
+    try:
+        url = model2url[model_name]
+        set_no_proxy(url)
+
+        client = OpenAI(api_key='no need', base_url=url, max_retries=0, timeout=1000)
+        response = client.chat.completions.create(
+            **request_data,
+        )
+        answer = ''
+        for chunk in response:
+            answer += chunk.choices[0].delta.content
+        return answer
+    except Exception as e:
+        logger = set_logger(model_name)
+        logger.error(f"Error in post_local_stream: {e}")
+        raise
 
 def post_gemini_sync(request_data: dict, api_key: str):
     try:

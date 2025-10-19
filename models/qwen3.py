@@ -42,10 +42,22 @@ class Qwen3(ModelBase):
     
 from transformers import Qwen3VLMoeForConditionalGeneration, AutoProcessor
 from .qwen2_5 import Qwen2_5_VL
-class Qwen3_VL(Qwen2_5_VL):
+class Qwen3_VL_Moe(Qwen2_5_VL):
     def __init__(self, model_path):
         super().__init__(model_path)
 
     def _load_model(self):
         self.model = Qwen3VLMoeForConditionalGeneration.from_pretrained(self.model_path, torch_dtype="auto", device_map="auto")
         self.processor = AutoProcessor.from_pretrained(self.model_path)
+
+from transformers import AutoModelForImageTextToText, AutoProcessor
+
+class Qwen3_VL(Qwen2_5_VL):
+    def __init__(self, model_path):
+        super().__init__(model_path)
+    def _load_model(self):
+
+        self.processor = AutoProcessor.from_pretrained(self.model_path)
+        self.model = AutoModelForImageTextToText.from_pretrained(
+            self.model_path, dtype="auto", device_map="auto"
+        )

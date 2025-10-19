@@ -10,6 +10,9 @@ import uuid
 import os
 from concurrent.futures import ThreadPoolExecutor
 
+import asyncio
+from queue import Queue, Empty
+
 from logger import set_logger, logger_output
 from key_manage import ApiKeyManager, NoAvailableKeyError, UserAccessDeniedError
 
@@ -45,6 +48,7 @@ class BaseHandler(tornado.web.RequestHandler):
         self.finish()
 
     async def post(self):
+
         # rename api key to username
         username = get_api_key_from_request(self)
         if not (username and self.key_manager.get_user_status(username)):
@@ -68,10 +72,10 @@ class BaseHandler(tornado.web.RequestHandler):
             self.write({"error": "Missing 'model' or 'messages' in request body."})
             return
 
-        if model_name not in SUPPORT_MODELS:
-            self.set_status(400)
-            self.write({"error": f"Model '{model_name}' is not supported. Available models: {SUPPORT_MODELS}"})
-            return
+        # if model_name not in SUPPORT_MODELS:
+        #     self.set_status(400)
+        #     self.write({"error": f"Model '{model_name}' is not supported. Available models: {SUPPORT_MODELS}"})
+        #     return
         
         # 检查用户访问权限 - 这里先进行基本检查，实际密钥获取在process方法中
         try:
@@ -117,14 +121,17 @@ class BaseHandler(tornado.web.RequestHandler):
             # --- 心跳保活循环 (这段逻辑保持不变) ---
             while not task.done():
                 try:
-                    await asyncio.wait_for(asyncio.shield(task), timeout=5)
+                    await asyncio.wait_for(asyncio.shield(task), timeout=3)
                 except asyncio.TimeoutError:
                     self.write(" ")
                     await self.flush()
             
             # --- 任务完成 ---
             if task.exception():
-                raise task.exception()
+                error_message = str(task.exception()).replace('\n', ' ')
+                error_payload = json.dumps({"error": f"Model inference failed: {error_message}"})
+                self.write(f"data: {error_payload}\n\n")
+                raise
                 
             response_text = task.result()
             
@@ -230,17 +237,105 @@ class BaseHandler(tornado.web.RequestHandler):
 
 class localHandler(BaseHandler):
 
+    async def process_stream(self, request_data: dict):
+        """
+        Processes the request in a background thread and yields results via a queue.
+        This simulates a streaming response for a non-streaming model.
+        """
+        
+        # 1. 创建一个线程安全的队列，用于在同步和异步代码之间通信
+        q = Queue()
+        
+        # 定义一个特殊的标记，表示流的结束
+        STOP_SIGNAL = object()
+        
+        def run_model_in_thread():
+            """
+            这个函数将在后台线程中执行。
+            它会调用阻塞的模型推理，然后将结果放入队列。
+            """
+            try:
+                # 调用你已有的、同步的、阻塞的 process_non_stream 方法
+                # 这是一种代码复用的好方法
+                result_text = post_local_stream(request_data)
+                q.put(result_text)
+            except Exception as e:
+                # 如果模型推理出错，将异常放入队列
+                # self.logger.error(f"Error during model inference in thread: {e}", exc_info=True)
+                print(f"Error during model inference in thread: {e}")
+                q.put(e)
+            finally:
+                # 无论成功还是失败，都放入结束信号
+                q.put(STOP_SIGNAL)
+
+        # 2. 在 executor 中异步运行上述函数
+        # 我们不 await 它，因为它会立即返回一个 future 对象
+        loop = asyncio.get_event_loop()
+        future = loop.run_in_executor(self.executor, run_model_in_thread)
+
+        # 3. 异步地从队列中读取数据并 yield
+        while True:
+            try:
+                # 非阻塞地从队列中获取项目
+                # 我们不能用 q.get() 因为它是阻塞的
+                item = q.get_nowait()
+                
+                if item is STOP_SIGNAL:
+                    # 收到结束信号，跳出循环
+                    break
+                elif isinstance(item, Exception):
+                    # 如果队列中的是异常对象，则重新抛出它
+                    raise item
+                else:
+                    # 这是我们期待的文本结果
+                    # 为了让它看起来像流，我们创建一个模拟的 chunk 对象
+                    # 这个对象结构需要匹配你的 format_chunk_to_sse 方法的期望
+                    from types import SimpleNamespace
+                    
+                    # 模拟 OpenAI 的 Stream Chunk 结构
+                    mock_chunk = SimpleNamespace(
+                        choices=[
+                            SimpleNamespace(
+                                index=0,
+                                delta=SimpleNamespace(content=item), # 核心内容
+                                finish_reason=None # 还未结束
+                            )
+                        ]
+                    )
+                    yield mock_chunk
+                    
+            except Empty:
+                # 队列为空，说明后台线程还在计算
+                # 我们等待一小段时间，让出控制权，避免阻塞事件循环
+                await asyncio.sleep(0.01)
+
+        # 等待后台线程任务最终完成，以便正确处理任何未捕获的异常
+        await future
+        
+        # 4. 发送最后一个包含 finish_reason 的块
+        from types import SimpleNamespace
+        final_mock_chunk = SimpleNamespace(
+            choices=[
+                SimpleNamespace(
+                    index=0,
+                    delta=SimpleNamespace(content=""), # 最后的 delta 内容为空
+                    finish_reason="stop" # 标记流结束
+                )
+            ]
+        )
+        yield final_mock_chunk
+
     def process_non_stream(self, request_data: dict):
         """非流式处理，集成密钥管理"""
         username = getattr(self, 'username', 'unknown_user')
         model_name = request_data.get("model")
         # messages = request_data.get("messages")
         try:
-            if self.key_manager._check_and_update_user_access(username, model_name):
+            # if self.key_manager._check_and_update_user_access(username, model_name):
                 
-                result = post_local_sync(request_data)
-                
-                return result
+            result = post_local_sync(request_data)
+            
+            return result
                 
         except (NoAvailableKeyError, UserAccessDeniedError) as e:
             # self.set_status(503)
