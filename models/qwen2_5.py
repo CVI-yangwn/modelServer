@@ -94,10 +94,63 @@ class Qwen2_5_VL(ModelBase):
         return self.generate(messages)[0]
 
 from transformers import LlavaNextVideoProcessor, LlavaNextVideoForConditionalGeneration
-class VideoLLaVa(Qwen2_5_VL):
+class VideoLLaVa(ModelBase):
     def __init__(self, model_path):
         super().__init__(model_path)
 
     def _load_model(self):
-        self.model = LlavaNextVideoForConditionalGeneration.from_pretrained(self.model_path, torch_dtype="auto", device_map="auto")
+        self.model = LlavaNextVideoForConditionalGeneration.from_pretrained(self.model_path, torch_dtype=torch.float16, device_map="auto")
         self.processor = LlavaNextVideoProcessor.from_pretrained(self.model_path)
+
+    def ask_with_images(self, question: str, images: list, history=[]):
+        for msg in history:
+            if msg["role"] == "user":
+                # Extract text from user message
+                for c in msg["content"]:
+                    if c["type"] == "text":
+                        c["text"] = c["text"].replace('<image>', '')
+
+                    elif c["type"] == "image":
+                        image_path = c["image"].split("file://")[1] if c["image"].startswith('file://') else c["image"]
+                        c["path"] = image_path
+                        del c["image"]
+
+        img_msg = [{"type": "image", "path": img.split("file://")[1]} for img in images]
+        messages = [
+            {
+                "role": "user",
+                "content": img_msg + [{"type": "text", "text": question.replace('<image>', '')}],
+            }
+        ]
+        if history:
+            messages = messages + history
+        inputs = self.processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt").to("cuda")
+
+        output = self.model.generate(**inputs, max_new_tokens=4096, do_sample=False)
+        return self.processor.decode(output[0][2:], skip_special_tokens=True)
+
+    def ask_only_text(self, question: str, history=[]):
+        for msg in history:
+            if msg["role"] == "user":
+                # Extract text from user message
+                for c in msg["content"]:
+                    if c["type"] == "text":
+                        c["text"] = c["text"].replace('<image>', '')
+
+                    elif c["type"] == "image":
+                        image_path = c["image"].split("file://")[1] if c["image"].startswith('file://') else c["image"]
+                        c["path"] = image_path
+                        del c["image"]
+
+        messages = [
+            {
+                "role": "user",
+                "content": [{"type": "text", "text": question.replace('<image>', '')}],
+            }
+        ]
+        if history:
+            messages = messages + history
+        inputs = self.processor.apply_chat_template(messages, add_generation_prompt=True, tokenize=True, return_dict=True, return_tensors="pt").to("cuda")
+
+        output = self.model.generate(**inputs, max_new_tokens=4096, do_sample=False)
+        return self.processor.decode(output[0][2:], skip_special_tokens=True)
