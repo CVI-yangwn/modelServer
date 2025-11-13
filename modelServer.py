@@ -333,7 +333,7 @@ class ChatCompletionHandler(BaseHandler):
                 # add the latest images to message
                 elif content_item.get("type") == "image_url":
                     save_img_path = save_cache_img(content_item['image_url']['url'], str(i), unique_folder_name)
-                    images_path.append(save_img_path)
+                    images_path.append("file://"+save_img_path)
 
             # add historical images
             if history_messages:

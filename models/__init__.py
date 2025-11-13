@@ -12,6 +12,8 @@ Qwen2_5_VL_32B = LazyModel('.qwen2_5', 'Qwen2_5_VL', os.path.join(_current_dir, 
 Lingshu_7B = LazyModel('.qwen2_5', 'Qwen2_5_VL', "/mnt/shared_models/Lingshu-7B")
 HuatuoGPT_Vision_7B = LazyModel('.qwen2_5', 'Qwen2_5_VL', "/mnt/shared_models/HuatuoGPT-Vision-7B")
 
+VideoLLaVaNext7B = LazyModel('.qwen2_5', 'VideoLLaVa', "/mnt/shared_models/LLaVA-NeXT-Video-7B-hf")
+
 Qwen3_14B = LazyModel('.qwen3', 'Qwen3', "/mnt/shared_models/Qwen3-14B", enable_thinking=True)
 Qwen3_VL_30B_A3B_Instruct = LazyModel('.qwen3', 'Qwen3_VL_Moe', "/mnt/shared_models/Qwen3-VL-30B-A3B-Instruct")
 Qwen3_VL_8B_Instruct = LazyModel('.qwen3', 'Qwen3_VL', "/mnt/shared_models/Qwen3-VL-8B-Instruct")
@@ -34,4 +36,5 @@ name_to_model_class = {
     "DeepSeek-VL2": DeepSeek_VL2,
     "Llava-med-1.5": Llava_med_1_5,
     "medgemma-27B": medgemma_27B,
+    "LLaVA-NeXT-Video-7B": VideoLLaVaNext7B,
 }

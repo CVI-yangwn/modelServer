@@ -6,7 +6,7 @@ RED='\033[0;31m'
 NC='\033[0m'
 
 TARGET_COMMAND="ms"
-SHELL_CONFIG_FILE="$HOME.bashrc"
+SHELL_CONFIG_FILE="$HOME/.bashrc"
 
 echo "🚀 开始安装 '${TARGET_COMMAND}' 命令..."
 

@@ -110,6 +110,8 @@ class LLMAPI:
                 model=self.model_name,
                 messages=self.history,
                 stream=stream,
+                max_tokens=40000,
+                # timeout=1000,
                 **kwargs # Pass any extra parameters like temperature, max_tokens
             )
             if not stream:
@@ -120,7 +122,11 @@ class LLMAPI:
             else:
                 answer = ''
                 for chunk in response:
-                    answer += chunk.choices[0].delta.content
+                    if not chunk.choices:
+                        continue
+                    delta = chunk.choices[0].delta
+                    if delta.content is not None:
+                        answer += delta.content
                 self._check_answer(answer)
                 self.error_occur = 0  # Reset error count on success
                 return answer

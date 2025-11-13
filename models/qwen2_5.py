@@ -59,7 +59,7 @@ class Qwen2_5_VL(ModelBase):
             }
         ]
         if history:
-            messages = messages + history
+            messages = history + messages
         return self.generate(messages)[0]
     
     def ask_with_videos(self, question:str, videos:list, **kwargs):
@@ -92,3 +92,12 @@ class Qwen2_5_VL(ModelBase):
         if history:
             messages = history + messages
         return self.generate(messages)[0]
+
+from transformers import LlavaNextVideoProcessor, LlavaNextVideoForConditionalGeneration
+class VideoLLaVa(Qwen2_5_VL):
+    def __init__(self, model_path):
+        super().__init__(model_path)
+
+    def _load_model(self):
+        self.model = LlavaNextVideoForConditionalGeneration.from_pretrained(self.model_path, torch_dtype="auto", device_map="auto")
+        self.processor = LlavaNextVideoProcessor.from_pretrained(self.model_path)
