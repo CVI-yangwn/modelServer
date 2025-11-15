@@ -22,6 +22,9 @@ medgemma_27B = LazyModel('.qwen3', 'Qwen3_VL', "/mnt/shared_models/medgemma-27b-
 
 DeepSeek_VL2 = LazyModel('.deepseek', 'DeepSeek_VL', "/mnt/shared_models/deepseek-vl2")
 
+InternVL3_5_8B = LazyModel('.internvl', 'InternVL3', "/mnt/shared_models/InternVL3_5-8B")
+InternVL3_8B = LazyModel('.internvl', 'InternVL3', "/mnt/shared_models/InternVL3-8B")
+
 Llava_med_1_5 = LazyModel('.llava', 'Llava_med_1_5', "/mnt/shared_models/llava-med-v1.5-mistral-7b")
 
 name_to_model_class = {
@@ -37,4 +40,6 @@ name_to_model_class = {
     "Llava-med-1.5": Llava_med_1_5,
     "medgemma-27B": medgemma_27B,
     "LLaVA-NeXT-Video-7B": VideoLLaVaNext7B,
+    "InternVL3-8B": InternVL3_8B,
+    "InternVL3.5-8B": InternVL3_5_8B,
 }

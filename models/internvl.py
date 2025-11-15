@@ -91,14 +91,39 @@ class InternVL3(ModelBase):
     def __init__(self, model_path):
         super().__init__(model_path)
         self.img_context_token_id = '<IMG_CONTEXT>'
-
+        # self.img_context_token_id = '<image>'
 
     def _load_model(self):
         self.model = AutoModel.from_pretrained(self.model_path, dtype="auto", device_map="auto", trust_remote_code=True).eval()
         self.tokenizer = AutoTokenizer.from_pretrained(self.model_path)
 
     def ask_with_images(self, question:str, images:list, history=[], **kwargs):
-        generation_config = dict(max_new_tokens=2048, do_sample=True)
+        """
+        TODO:  找一个方法能够支持“拼接”和“独立”混合输入
+            # multi-image multi-round conversation, combined images (多图多轮对话，拼接图像)
+            pixel_values1 = load_image('./example/image1.jpg', max_num=12).to(torch.bfloat16).cuda()
+            pixel_values2 = load_image('./example/image2.jpg', max_num=12).to(torch.bfloat16).cuda()
+            pixel_values = torch.cat((pixel_values1, pixel_values2), dim=0)
+            question = '<image>\nDescribe the two images in detail.'
+            response, history = model.chat(tokenizer, pixel_values, question, generation_config,
+                                        history=None, return_history=True)
+            print(f'User: {question}\nAssistant: {response}')
+            question = 'What are the similarities and differences between these two images.'
+            response, history = model.chat(tokenizer, pixel_values, question, generation_config,
+                                        history=history, return_history=True)
+            print(f'User: {question}\nAssistant: {response}')
+            # multi-image multi-round conversation, separate images (多图多轮对话，独立图像)
+            pixel_values1 = load_image('./example/image1.jpg', max_num=12).to(torch.bfloat16).cuda()
+            pixel_values2 = load_image('./example/image2.jpg', max_num=12).to(torch.bfloat16).cuda()
+            pixel_values = torch.cat((pixel_values1, pixel_values2), dim=0)
+            num_patches_list = [pixel_values1.size(0), pixel_values2.size(0)]
+            question = 'Image-1: <image>\nImage-2: <image>\nDescribe the two images in detail.'
+            response, history = model.chat(tokenizer, pixel_values, question, generation_config,
+                                        num_patches_list=num_patches_list,
+                                        history=None, return_history=True)
+        """
+
+        generation_config = dict(max_new_tokens=1024, do_sample=False)
         generation_config.update(kwargs)
 
         qus, ans = [], []
@@ -107,11 +132,11 @@ class InternVL3(ModelBase):
             if msg["role"] == "user":
                 content = msg["content"]
                 for c in content:
-                    if c["type"] == "text":
-                        qus.append(c["text"])
-                    elif c["type"] == "image":
+                    if c["type"] == "image":
                         image_path = c["image"].split("file://")[1]
                         image_paths.append(image_path)
+                    elif c["type"] == "text":
+                        qus.append(c["text"])
             else:
                 content = msg["content"]
                 for c in content:
@@ -121,15 +146,14 @@ class InternVL3(ModelBase):
         his = [(q, a) for q, a in zip(qus, ans)]
         
 
-        for img in images:
-            if img.startswith("file://"):
-                image_paths.append(img.split("file://")[1])
-            else:
-                image_paths.append(img)
+        image_paths.extend([img.split("file://")[1] if img.startswith("file://") else img for img in images])
         if image_paths:
+            if "<image>" not in question: question = "<image>\n" + question
+
             if len(image_paths) > 1:
                 pixel_values = tuple(load_image(img_path, max_num=12).to(torch.bfloat16).cuda() for img_path in image_paths)
-                num_patches_list = [pv.size(0) for pv in pixel_values]        
+                # num_patches_list = [pv.size(0) for pv in pixel_values]
+                num_patches_list = None
                 pixel_values = torch.cat(pixel_values, dim=0)
             else:
                 pixel_values = load_image(image_paths[0], max_num=12).to(torch.bfloat16).cuda()
@@ -145,3 +169,4 @@ class InternVL3(ModelBase):
 
     def ask_only_text(self, question:str, history=[], **kwargs):
         return self.ask_with_images(question, images=[], history=history, **kwargs)
+

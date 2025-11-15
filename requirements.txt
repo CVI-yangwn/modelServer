@@ -1,0 +1,13 @@
+torch
+torchvision
+transformers
+tornado
+pillow
+openai
+opencv-python
+termcolor
+accelerate
+qwen:
+    qwen_vl_utils
+intern:
+    timm
