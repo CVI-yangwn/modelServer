@@ -1,16 +1,11 @@
-import urllib, urllib.request
 from datetime import datetime
 import base64, json
-import os, ast, time
+import os
 import numpy as np
 import cv2
 from logger import set_logger, logger_output
 
 _current_dir = os.path.dirname(os.path.abspath(__file__))
-
-SUPPORT_MODELS = ("Qwen2.5-VL-3B", "Qwen2.5-VL-7B", "Qwen2.5-VL-32B",
-                 "gemini-2.0-flash", "gemini-2.5-flash-lite", "gemini-2.5-flash", "gemini-2.5-pro",
-                 "Qwen3-14B", "Lingshu-7B", "Lingshu-32B", "Qwen3-VL-30B-A3B-Instruct", "HuatuoGPT-Vision-7B")
 
 from openai import OpenAI, AsyncOpenAI
 from collections import defaultdict

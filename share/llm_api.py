@@ -1,5 +1,4 @@
-import json, os, time
-from os import path
+import os, time
 from openai import OpenAI
 import mimetypes, base64
 import numpy as np
@@ -354,54 +353,17 @@ class LLMAPI:
 
 
 if __name__ == "__main__":
-    # Initialize the client
-    # llm = LLMAPI(
-    #     model_name="HuatuoGPT-Vision-7B",
-    #     base_url="http://172.31.58.8:6543/v1",
-    #     api_key="root",
-    # )
-    # llm = LLMAPI(model_name="Lingshu-32B",
-    #         api_key="root",
-    #         base_url="http://172.31.58.9:5521/v1")
-    model_name = "Llava-med-1.5"
+    model_name = "Qwen3-VL-8B"
     # model_name = "qwen2.5-7b-instruct"
     llm = LLMAPI(model_name=model_name,
-        api_key="sk-TIyM8JumtZV92ne0fTiaPPQz3DnQhnHZLbVsTmUuOcdFUe51",
-        base_url="http://172.31.71.40:7777/v1/")
+        api_key="xxx",
+        base_url="http://172.31.58.8:9999/v1/")
     # --- Example 1: Simple text question ---
     print("\n--- Text-only Example ---")
-    answer_text = llm.chat("What's your name?")
+    answer_text, history = llm.chat("What's your name?")
     print("Model Response:", answer_text)
 
     # --- Example 2: Ask a follow-up question (demonstrates history) ---
     print("\n--- Follow-up Example ---")
-    follow_up_answer = llm.chat("What just I asked you?")
+    follow_up_answer, history = llm.chat("What just I asked you?", history=history)
     print("Model Response:", follow_up_answer)
-
-    # Clear history for a new conversation
-
-    for _ in range(100):
-        llm.clear_history()
-
-        # --- Example 3: Image question ---
-        print("\n--- Image Example ---")
-        # Make sure this image path is correct on your system
-        image_path = "/home/zhouyz/ywn_code/normal_image.png" 
-        if os.path.exists(image_path):
-            answer_image, _ = llm.chat("请详细描述这张图片。", images=[image_path])
-            print("Model Response:", answer_image)
-        else:
-            print(f"Image not found at {image_path}, skipping image example.")
-        
-        answer_image, _ = llm.chat("这张图片有什么特别的地方吗？")
-        print("Model Response:", answer_image)
-
-    # --- Example 4: Video question (optional) ---
-    # print("\n--- Video Example ---")
-    # # Make sure this video path is correct on your system
-    # video_path = "./case_0422.mp4"
-    # if os.path.exists(video_path):
-    #     answer_video = llm.chat("请总结一下这个视频的内容。", videos=[video_path], video_fps=0.3) # Extract 1 frame every ~3 seconds
-    #     print("Model Response:", answer_video)
-    # else:
-    #     print(f"Video not found at {video_path}, skipping video example.")

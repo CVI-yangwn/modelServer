@@ -2,7 +2,6 @@
 Based on trans_server.py
 Transfer the remote api call to escape from timeout
 """
-from turtle import Vec2D
 import tornado
 import tornado.ioloop
 import tornado.web
@@ -16,7 +15,7 @@ from openai import OpenAI
 import asyncio
 from queue import Queue, Empty
 
-from logger import set_logger
+from utils.logger import set_logger
 
 os.environ['NO_PROXY'] = '*'  # forbit all the proxy 
 
