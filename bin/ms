@@ -202,7 +202,7 @@ do_start() {
     if [ $? -ne 0 ]; then exit 1; fi
 
     # 构建在后台执行的完整命令
-    local full_command="export CUDA_VISIBLE_DEVICES=${gpu_id}; ${activate_cmd} && python -u \"$SCRIPT_NAME\" --model \"${model_name}\" --port ${port}"
+    local full_command="export CUDA_VISIBLE_DEVICES=${gpu_id}; export OMP_NUM_THREADS=8; ${activate_cmd} && python -u \"$SCRIPT_NAME\" --model \"${model_name}\" --port ${port}"
     
     # 后台启动Python脚本
     nohup bash -c "${full_command}" > "$log_file" 2>&1 &
