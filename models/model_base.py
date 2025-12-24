@@ -36,7 +36,9 @@ class LazyModel:
         self.weight_path = weight_path
         self.kwargs = kwargs
 
-    def get_instance(self):
+    def get_instance(self, weight_path: str = None):
+        if weight_path is not None:
+            self.weight_path = weight_path
         if self._instance is None:
             try:
                 module = importlib.import_module(self.module_name, package=__package__)

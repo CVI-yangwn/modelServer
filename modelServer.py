@@ -5,6 +5,7 @@ import time
 import asyncio
 import sys
 import os
+import shutil
 import json
 import uuid
 from utils.logger import set_logger, logger_output
@@ -20,6 +21,7 @@ def parse_args():
     parser.add_argument('--port', type=int, default=5522)
     parser.add_argument('--addr', type=str, default="0.0.0.0")
     parser.add_argument('--model', type=str, default="Qwen2.5-VL-7B")
+    parser.add_argument('--weight_path', type=str, default=None)
     parser.add_argument('--log_dir', type=str, default=_current_dir)
     parser.add_argument('--thinking', type=bool, default=False)
 
@@ -361,7 +363,11 @@ class ChatCompletionHandler(BaseHandler):
             # 清理本地保存的图片
             for img_path in images_path:
                 try:
-                    os.remove(img_path)
+                    parent_dir = os.path.dirname(img_path)
+                    try:
+                        shutil.rmtree(parent_dir)
+                    except OSError:
+                        pass
                 except Exception as e:
                     # self.logger.warning(f"Failed to delete image {img_path}: {e}")
                     pass
@@ -375,7 +381,7 @@ class ChatCompletionHandler(BaseHandler):
 
 class ModelServer:
     def __init__(self, server_address="0.0.0.0", port=8000):
-        self.model_instance = name_to_model_class[SELECTED_MODEL_NAME].get_instance()
+        self.model_instance = name_to_model_class[SELECTED_MODEL_NAME].get_instance(weight_path=WEIGHT_PATH)
         self.address = server_address
         self.port = port
         
@@ -409,6 +415,7 @@ if __name__ == "__main__":
     SELECTED_MODEL_NAME = args.model
     SERVER_PORT = args.port
     SERVER_ADDRESS = args.addr
+    WEIGHT_PATH = args.weight_path
 
     if SELECTED_MODEL_NAME not in name_to_model_class:
         print(f"Error: Model '{SELECTED_MODEL_NAME}' not found in `name_to_model_class` mapping.")

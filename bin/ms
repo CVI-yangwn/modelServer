@@ -72,7 +72,7 @@ usage() {
     echo "  -m, --model <模型名>    指定要加载的模型 (默认: ${DEFAULT_MODEL_NAME})"
     echo "  -p, --port  <端口号>    指定服务监听的端口 (默认: ${DEFAULT_PORT})"
     echo "  -g, --gpu   <GPU_ID>    指定使用的GPU ID (默认: ${DEFAULT_GPU_ID})"
-    # 移除了 -e 选项，因为 start 将会交互式选择
+    echo "  -w, --weight_path <路径> 指定模型权重路径 (可选)"
     echo ""
     echo -e "${YELLOW}示例:${NC}"
     echo "  # 启动一个名为 'api_server_1' 的实例，使用GPU 1，端口8001"
@@ -123,13 +123,14 @@ do_start() {
     local port=$DEFAULT_PORT
     local gpu_id=$DEFAULT_GPU_ID
     local conda_env_name="" # 默认conda环境为空
-
+    local weight_path=""
     while [[ "$#" -gt 0 ]]; do
         case $1 in
             -m|--model) model_name="$2"; shift ;;
             -p|--port) port="$2"; shift ;;
             -g|--gpu) gpu_id="$2"; shift ;;
             -e|--env) conda_env_name="$2"; shift ;; # 隐藏参数，供restart调用
+            -w|--weight_path) weight_path="$2"; shift ;;
             *) echo -e "${RED}错误: 'start' 命令遇到未知选项: $1${NC}"; usage ;;
         esac
         shift
@@ -188,21 +189,25 @@ do_start() {
     echo "PORT=${port}" >> "$conf_file"
     echo "GPU_ID=${gpu_id}" >> "$conf_file"
     echo "CONDA_ENV_NAME=${conda_env_name}" >> "$conf_file"
-
+    echo "WEIGHT_PATH=${weight_path}" >> "$conf_file"
     echo -e "正在启动实例 '${BLUE}${instance_name}${NC}'..."
     echo -e "  - Conda 环境: ${conda_env_name}"
     echo -e "  - 模型: ${model_name}"
+    echo -e "  - 权重路径: ${weight_path}"
     echo -e "  - 端口: ${port}"
     echo -e "  - GPU ID: ${gpu_id}"
     echo -e "  - 日志文件: ${log_file}"
-
     # 获取激活命令
     local activate_cmd
     activate_cmd=$(activate_env "$conda_env_name")
     if [ $? -ne 0 ]; then exit 1; fi
 
     # 构建在后台执行的完整命令
-    local full_command="export CUDA_VISIBLE_DEVICES=${gpu_id}; export OMP_NUM_THREADS=8; ${activate_cmd} && python -u \"$SCRIPT_NAME\" --model \"${model_name}\" --port ${port}"
+    local weight_arg=""
+    if [ -n "$weight_path" ]; then
+        weight_arg="--weight_path \"${weight_path}\""
+    fi
+    local full_command="export CUDA_VISIBLE_DEVICES=${gpu_id}; export OMP_NUM_THREADS=8; ${activate_cmd} && python -u \"$SCRIPT_NAME\" --model \"${model_name}\" --port ${port} ${weight_arg}"
     
     # 后台启动Python脚本
     nohup bash -c "${full_command}" > "$log_file" 2>&1 &
@@ -316,7 +321,7 @@ do_status() {
             echo -e "${RED}错误: 未找到实例 '${instance_name}' 的配置。${NC}"
             exit 1
         fi
-        local MODEL_NAME PORT GPU_ID CONDA_ENV_NAME
+        local MODEL_NAME PORT GPU_ID CONDA_ENV_NAME WEIGHT_PATH
         source "$conf_file" # 加载配置
         echo -e "${BLUE}--- 实例 '${instance_name}' 状态 ---${NC}"
         if is_running "$instance_name"; then
@@ -328,6 +333,9 @@ do_status() {
         fi
         echo "Conda环境: ${CONDA_ENV_NAME}"
         echo "模型: ${MODEL_NAME}"
+        if [ -n "$WEIGHT_PATH" ]; then
+            echo "权重路径: ${WEIGHT_PATH}"
+        fi
         echo "端口: ${PORT}"
         echo "GPU:  ${GPU_ID}"
     fi
@@ -403,9 +411,13 @@ case "$COMMAND" in
         
         # 【重要改动】: restart 从配置文件加载所有参数，包括 CONDA_ENV_NAME
         # 并通过隐藏的 -e 参数传递给 do_start，以跳过交互选择
-        local MODEL_NAME PORT GPU_ID CONDA_ENV_NAME
+        local MODEL_NAME PORT GPU_ID CONDA_ENV_NAME WEIGHT_PATH
         source "$conf_file"
-        do_start "$INSTANCE_NAME" -m "$MODEL_NAME" -p "$PORT" -g "$GPU_ID" -e "$CONDA_ENV_NAME"
+        if [ -n "$WEIGHT_PATH" ]; then
+            do_start "$INSTANCE_NAME" -m "$MODEL_NAME" -p "$PORT" -g "$GPU_ID" -e "$CONDA_ENV_NAME" -w "$WEIGHT_PATH"
+        else
+            do_start "$INSTANCE_NAME" -m "$MODEL_NAME" -p "$PORT" -g "$GPU_ID" -e "$CONDA_ENV_NAME"
+        fi
         ;;
     status)
         do_status "$INSTANCE_NAME"
@@ -413,7 +425,7 @@ case "$COMMAND" in
     logs)
         log_file="${INSTANCE_DIR}/${INSTANCE_NAME}/${INSTANCE_NAME}.log"
         if [ ! -f "$log_file" ]; then
-            echo -e "${RED}错误: 未找到实例 '${instance_NAME}' 的日志文件。${NC}"
+            echo -e "${RED}错误: 未找到实例 '${INSTANCE_NAME}' 的日志文件。${NC}"
             exit 1
         fi
         echo "按 CTRL+C 停止查看日志。"
