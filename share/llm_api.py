@@ -4,7 +4,7 @@ import mimetypes, base64
 import numpy as np
 import cv2
 
-os.environ['no_proxy'] = "172.31.233.64, 172.31.58.8, 172.31.71.40, 172.31.63.39"
+os.environ['no_proxy'] = "*"
 
 class LLMAPI:
 
@@ -367,3 +367,9 @@ if __name__ == "__main__":
     print("\n--- Follow-up Example ---")
     follow_up_answer, history = llm.chat("What just I asked you?", history=history)
     print("Model Response:", follow_up_answer)
+
+    # --- Example 3: Image question ---
+    print("\n--- Image Example ---")
+    image_path = "modelServer/models/test_image.png"
+    answer_image, history = llm.chat("What do you see in the image?", images=[image_path], history=history)
+    print("Model Response:", answer_image)

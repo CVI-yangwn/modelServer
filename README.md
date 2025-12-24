@@ -3,6 +3,26 @@
 
 因为本人一些其他的需求，所以有的代码是多余用不上的，看看modelServer就行。
 
+## 支持模型
+
+| 模型名称 | 类型 | 适配 |
+|---------|------|------|
+| Qwen2.5-VL Series | VLM | ✓ |
+| Qwen3-14B | LLM | ✓ |
+| Qwen3-VL Series | VLM | ✓ |
+| Qwen3-VL-30B-A3B-Instruct | VLM | ✓ |
+| Lingshu | VLM | ✓ |
+| HuatuoGPT-Vision-7B | VLM | ✓ |
+| DeepSeek-VL2 | VLM | ✓ |
+| Llava-med-1.5 | VLM | ✓ |
+| medgemma | VLM | ✓ |
+| LLaVA-NeXT-Video-7B | VLM | ✓ |
+| InternVL3 Series | VLM | ✓ |
+| InternVL3.5 Series | VLM | ✓ |
+| Llama3-VILA Series | VLM |  |
+
+**注意：** 模型路径需要在 `models/__init__.py` 中配置，使用 `-w` 参数可以指定自定义权重路径。
+
 # ModelServer 使用说明
 
 ## 使用 ms 脚本管理服务

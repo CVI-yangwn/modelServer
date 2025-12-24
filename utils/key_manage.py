@@ -8,7 +8,7 @@ from datetime import datetime, date
 from collections import defaultdict
 from dataclasses import dataclass, field
 from typing import Dict, Optional
-from logger import set_logger
+from .logger import set_logger
 
 class NoAvailableKeyError(Exception):
     pass

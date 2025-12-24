@@ -3,7 +3,7 @@ import base64, json
 import os
 import numpy as np
 import cv2
-from logger import set_logger, logger_output
+from .logger import set_logger, logger_output
 
 _current_dir = os.path.dirname(os.path.abspath(__file__))
 

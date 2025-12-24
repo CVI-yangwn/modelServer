@@ -77,6 +77,11 @@ class BaseHandler(tornado.web.RequestHandler):
             self.write({"error": f"Model '{model_name}' is not supported."})
             return
 
+        if model_name != SELECTED_MODEL_NAME:
+            self.set_status(400)
+            self.write({"error": f"The model '{model_name}' is not the same as the selected model '{SELECTED_MODEL_NAME}'."})
+            return
+
         if stream_mode:
             await self.handle_stream_request(request_data)
         else:
