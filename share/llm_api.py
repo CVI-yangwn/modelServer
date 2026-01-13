@@ -22,7 +22,6 @@ class LLMAPI:
             timeout=1000
         )
         self.error_occur = 0
-        self.history = [] # Initialize conversation history
         print("Client has been created.")
 
     def get_system_prompt(self, prompt):
@@ -36,7 +35,7 @@ class LLMAPI:
     def chat(self, question: str, 
              images: list = None,
              videos: list = None,
-             history: list = None,
+             history: list = [],
              video_fps: float = 0.5,
              video_resolution: int = 224,
              **kwargs):
@@ -58,7 +57,6 @@ class LLMAPI:
         """
         images = images or []
         videos = videos or []
-        history = history or self.history
         # Prepare the content for the user's message
         user_content = []
         
@@ -99,7 +97,6 @@ class LLMAPI:
         # Create and store the assistant's response
         assistant_message = {"role": "assistant", "content": [{"type": "text", "text": assistant_response}]}
         history.append(assistant_message)
-        self.history = history
         return assistant_response, history
 
     def _generate(self, messages, **kwargs) -> str:
@@ -107,13 +104,14 @@ class LLMAPI:
         Private method to make the API call and handle errors/retries.
         """
         stream = kwargs.get("stream", True)
+        max_tokens = kwargs.get("max_tokens", 20000)
         try:
 
             response = self.client.chat.completions.create(
                 model=self.model_name,
                 messages=messages,
                 stream=stream,
-                max_tokens=20000,
+                max_tokens=max_tokens,
                 # timeout=1000,
                 **kwargs # Pass any extra parameters like temperature, max_tokens
             )
@@ -244,93 +242,10 @@ class LLMAPI:
         """
         Clears the conversation history.
         """
-        self.history = []
         self.error_occur = 0  # Reset error count on success
         print("Conversation history has been cleared.")
 
-    def chat_once(self, question: str, 
-             images: list = None, 
-             videos: list = None, 
-             video_fps: float = 0.5,
-             video_resolution: int = 224,
-             **kwargs) -> str:
-
-        images = images or []
-        videos = videos or []
-        
-        # Prepare the content for the user's message
-        user_content = []
-        
-        # Process images
-        for img_source in images:
-            encoded_image = self._encode_image_to_base64(img_source)
-            if encoded_image:
-                user_content.append({
-                    "type": "image_url",
-                    "image_url": {"url": encoded_image}
-                })
-        
-        # Process videos
-        for video_path in videos:
-            try:
-                frames = self._extract_frames(video_path, fps=video_fps, max_resolution=video_resolution)
-                print(f"Extracted {len(frames)} frames from {os.path.basename(video_path)}.")
-                for frame in frames:
-                    encoded_frame = self._encode_image_to_base64(frame)
-                    if encoded_frame:
-                        user_content.append({
-                            "type": "image_url",
-                            "image_url": {"url": encoded_frame}
-                        })
-            except (ValueError, FileNotFoundError) as e:
-                print(f"Warning: Could not process video '{video_path}'. {e}. Skipping.")
-
-        user_content.append({"type": "text", "text": question})
-        user_message = [{"role": "user", "content": user_content}]
-        assistant_response = self._generate_once(user_message)
-        
-        return assistant_response
-    
-    def _generate_once(self, user_message, **kwargs) -> str:
-        """
-        Private method to make the API call and handle errors/retries.
-        """
-        stream = kwargs.get("stream", True)
-        try:
-            response = self.client.chat.completions.create(
-                model=self.model_name,
-                messages=user_message,
-                stream=stream,
-                max_tokens=4096,
-                # timeout=1000,
-                **kwargs # Pass any extra parameters like temperature, max_tokens
-            )
-            if not stream:
-                answer = response.choices[0].message.content
-                self._check_answer(answer)
-                self.error_occur = 0  # Reset error count on success
-                return answer
-            else:
-                answer = ''
-                for chunk in response:
-                    if not chunk.choices:
-                        continue
-                    delta = chunk.choices[0].delta
-                    if delta.content is not None:
-                        answer += delta.content
-                self._check_answer(answer)
-                self.error_occur = 0  # Reset error count on success
-                return answer
-            
-        except Exception as e:
-            self.error_occur += 1
-            print(f"Error during API call: {e}")
-            self._process_error()
-            
-            return self._generate_once(user_message)
-
     def define_conversation(self, question, answer, images: list, history=None):
-
         # define user message
         user_content = []
         for img_source in images:
@@ -350,7 +265,6 @@ class LLMAPI:
             messages = history + messages
         return messages
     
-
 
 if __name__ == "__main__":
     model_name = "Qwen3-VL-8B"
