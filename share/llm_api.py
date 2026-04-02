@@ -1,7 +1,4 @@
-import os, time
-from openai import OpenAI
-import mimetypes, base64
-import numpy as np
+port numpy as np
 import cv2
 
 os.environ['no_proxy'] = "*"
@@ -35,7 +32,7 @@ class LLMAPI:
     def chat(self, question: str, 
              images: list = None,
              videos: list = None,
-             history: list = [],
+             history: list = None,
              video_fps: float = 0.5,
              video_resolution: int = 224,
              **kwargs):
@@ -57,6 +54,7 @@ class LLMAPI:
         """
         images = images or []
         videos = videos or []
+        history = history or []
         # Prepare the content for the user's message
         user_content = []
         
