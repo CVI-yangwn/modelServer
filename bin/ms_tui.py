@@ -20,6 +20,7 @@ from textual.binding import Binding
 from textual.containers import Container, Horizontal, Vertical
 from textual.message import Message
 from textual.reactive import reactive
+from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Select, Static
 
 CURRENT_DIR = Path(__file__).resolve().parent
@@ -34,6 +35,70 @@ class StatusMessage(Message):
     def __init__(self, text: str) -> None:
         self.text = text
         super().__init__()
+
+
+class ConfirmDialog(ModalScreen[bool]):
+    def __init__(self, title: str, message: str):
+        super().__init__()
+        self._title = title
+        self._message = message
+
+    def compose(self) -> ComposeResult:
+        with Container(id="confirm_dialog"):
+            yield Label(self._title)
+            yield Static(self._message)
+            with Horizontal():
+                yield Button("取消", id="cancel", variant="default")
+                yield Button("确定", id="confirm", variant="error")
+
+    def on_mount(self) -> None:
+        self.query_one("#cancel", Button).focus()
+
+    def _focused_button_id(self) -> str:
+        focused = self.focused
+        if isinstance(focused, Button):
+            return focused.id or "cancel"
+        return "cancel"
+
+    def action_focus_left(self) -> None:
+        current = self._focused_button_id()
+        target = "#cancel" if current == "confirm" else "#confirm"
+        self.query_one(target, Button).focus()
+
+    def action_focus_right(self) -> None:
+        current = self._focused_button_id()
+        target = "#confirm" if current == "cancel" else "#cancel"
+        self.query_one(target, Button).focus()
+
+    def action_submit(self) -> None:
+        current = self._focused_button_id()
+        self.dismiss(current == "confirm")
+
+    def action_cancel(self) -> None:
+        self.dismiss(False)
+
+    def on_key(self, event) -> None:
+        key = event.key
+        if key == "left":
+            self.action_focus_left()
+            event.stop()
+        elif key == "right":
+            self.action_focus_right()
+            event.stop()
+        elif key == "enter":
+            self.action_submit()
+            event.stop()
+        elif key == "escape":
+            self.action_cancel()
+            event.stop()
+
+    @on(Button.Pressed, "#confirm")
+    def _confirm(self) -> None:
+        self.dismiss(True)
+
+    @on(Button.Pressed, "#cancel")
+    def _cancel(self) -> None:
+        self.dismiss(False)
 
 
 class MsTuiApp(App):
@@ -79,6 +144,13 @@ class MsTuiApp(App):
         color: $text;
         padding-left: 1;
     }
+    #confirm_dialog {
+        width: 60;
+        height: auto;
+        border: thick $accent;
+        background: $surface;
+        padding: 1 2;
+    }
     .field {
         margin-bottom: 1;
     }
@@ -100,6 +172,7 @@ class MsTuiApp(App):
         super().__init__()
         self.manager = MsManager(PROJECT_DIR)
         self._row_key_to_name = {}
+        self._row_index_to_name = {}
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -134,7 +207,7 @@ class MsTuiApp(App):
 
     def on_mount(self) -> None:
         table = self.query_one("#instance_table", DataTable)
-        table.add_columns("实例名", "状态", "PID", "模型", "端口", "GPU", "Conda")
+        table.add_columns("", "实例名", "状态", "PID", "模型", "端口", "GPU", "Conda")
         gpu_table = self.query_one("#gpu_proc_table", DataTable)
         gpu_table.add_columns("GPU", "PID", "USER", "SM", "CPU", "TIME", "COMMAND")
         self.refresh_instances()
@@ -148,11 +221,14 @@ class MsTuiApp(App):
         instances = self.manager.list_instances()
         table.clear()
         self._row_key_to_name.clear()
+        self._row_index_to_name.clear()
         for idx, item in enumerate(instances):
             pid = str(item.pid) if item.pid else "N/A"
             row_key = f"row-{idx}"
-            table.add_row(item.name, item.state, pid, item.model, item.port, item.gpu_id, item.conda_env, key=row_key)
+            selected_mark = "☑" if item.name == self.selected_instance else "☐"
+            table.add_row(selected_mark, item.name, item.state, pid, item.model, item.port, item.gpu_id, item.conda_env, key=row_key)
             self._row_key_to_name[row_key] = item.name
+            self._row_index_to_name[idx] = item.name
 
         if self.selected_instance:
             log_text = self.manager.read_log_tail(self.selected_instance, 60) if self.log_follow else "日志跟随已关闭"
@@ -464,6 +540,17 @@ class MsTuiApp(App):
         if self.selected_instance:
             self.query_one("#instance_name", Input).value = self.selected_instance
             self.query_one("#log_view", Static).update(self.manager.read_log_tail(self.selected_instance, 60))
+            self.refresh_instances()
+
+    @on(DataTable.RowHighlighted, "#instance_table")
+    def on_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
+        row_key = str(event.row_key)
+        highlighted_name = self._row_key_to_name.get(row_key, "")
+        if highlighted_name and highlighted_name != self.selected_instance:
+            self.selected_instance = highlighted_name
+            self.query_one("#instance_name", Input).value = highlighted_name
+            self.query_one("#log_view", Static).update(self.manager.read_log_tail(highlighted_name, 60))
+            self.refresh_instances()
 
     @on(Button.Pressed, "#deploy_btn")
     def on_deploy_pressed(self) -> None:
@@ -500,10 +587,21 @@ class MsTuiApp(App):
         self.refresh_instances()
 
     def _require_selection(self) -> Optional[str]:
-        if not self.selected_instance:
-            self.post_status("请先在左侧选择一个实例")
-            return None
-        return self.selected_instance
+        # 优先使用当前光标所在行，满足“光标到了就能操作”。
+        table = self.query_one("#instance_table", DataTable)
+        cursor_row = getattr(table, "cursor_row", None)
+        if isinstance(cursor_row, int):
+            name_from_cursor = self._row_index_to_name.get(cursor_row)
+            if name_from_cursor:
+                if name_from_cursor != self.selected_instance:
+                    self.selected_instance = name_from_cursor
+                    self.refresh_instances()
+                return name_from_cursor
+
+        if self.selected_instance:
+            return self.selected_instance
+        self.post_status("请先将光标移动到左侧实例行")
+        return None
 
     def action_stop_selected(self) -> None:
         name = self._require_selection()
@@ -517,6 +615,15 @@ class MsTuiApp(App):
         name = self._require_selection()
         if not name:
             return
+        self.push_screen(
+            ConfirmDialog("确认重启", f"确定要重启实例 `{name}` 吗？"),
+            callback=lambda confirmed: self._do_restart_selected(name, confirmed),
+        )
+
+    def _do_restart_selected(self, name: str, confirmed: bool) -> None:
+        if not confirmed:
+            self.post_status("已取消重启")
+            return
         _, msg = self.manager.restart_instance(name, wait_for_ready=False)
         self.post_status(msg)
         self.refresh_instances()
@@ -524,6 +631,15 @@ class MsTuiApp(App):
     def action_delete_selected(self) -> None:
         name = self._require_selection()
         if not name:
+            return
+        self.push_screen(
+            ConfirmDialog("确认删除", f"确定要删除实例 `{name}` 吗？此操作不可恢复。"),
+            callback=lambda confirmed: self._do_delete_selected(name, confirmed),
+        )
+
+    def _do_delete_selected(self, name: str, confirmed: bool) -> None:
+        if not confirmed:
+            self.post_status("已取消删除")
             return
         _, msg = self.manager.delete_instance(name)
         if self.selected_instance == name:
