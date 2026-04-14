@@ -27,162 +27,61 @@
 
 ## 使用 ms 脚本管理服务
 
-`ms` 是一个智能多实例服务管理脚本，可以方便地启动、停止、查看和管理多个 ModelServer 实例。
+`ms` 现在默认进入 Textual TUI（终端界面），用于多实例部署、编辑和监控。
 
-### 注意
-这个脚本实际上调用了代码modelServer.py，里面的一些模型的路径需要到models/\_\_init\_\_.py中进行自定义路径（用什么改什么就行），应该是比较简单的方式了。
+### 依赖
 
-### 快速开始
+TUI 依赖 `textual` 和 `pynvml`（强制）：
 
 ```bash
-# 进入 bin 目录
-cd bin
-
-# 启动服务（会交互式选择 Conda 环境）
-./ms start <实例名> -m <模型名> -p <端口> -g <GPU_ID>
-
-# 或者从项目根目录直接调用
-./bin/ms start <实例名> -m <模型名> -p <端口> -g <GPU_ID>
-
-# 查看所有实例状态
-./ms status
-
-# 查看指定实例状态
-./ms status <实例名>
-
-# 查看日志
-./ms logs <实例名>
-
-# 停止服务
-./ms stop <实例名>
-
-# 重启服务
-./ms restart <实例名>
-
-# 删除实例（包括配置和日志）
-./ms delete <实例名>
+pip install -r requirements.txt
 ```
 
-### 命令详解
-
-#### 1. 启动服务 (`start`)
-
-启动一个新的服务实例。启动时会交互式选择 Conda 环境。
+### 启动方式
 
 ```bash
-./ms start <实例名> [选项]
+# 在 modelServer 目录
+./bin/ms
 ```
 
-**选项：**
-- `-m, --model <模型名>`: 指定要加载的模型（默认: `Qwen2.5-VL-7B`）
-- `-p, --port <端口号>`: 指定服务监听的端口（默认: `9960`）
-- `-g, --gpu <GPU_ID>`: 指定使用的 GPU ID（默认: `0`）
-- `-w, --weight_path <路径>`: 指定模型权重路径（可选，默认: 空）
+### TUI 主要功能
 
-**示例：**
+- 左侧是实例表（同时也是配置表），字段包括：
+  - 实例名、模型、端口、GPU、Conda、路径、状态、PID
+- 实例表最后一行固定为 `new` 空白行，可直接填写后部署
+- 下方有实时系统监控（1s 刷新）和 GPU 进程信息
+- 右侧显示当前选中实例日志
 
-```bash
-# 启动一个名为 'api_server_1' 的实例，使用 GPU 1，端口 8001，模型 Qwen3-14B
-./ms start api_server_1 -m Qwen3-14B -g 1 -p 8001
+### 表格编辑与部署
 
-# 启动时指定模型权重路径
-./ms start api_server_1 -m Qwen3-14B -g 1 -p 8001 -w /path/to/model/weights
+- 将光标移动到目标单元格，按 `e` 编辑
+- `model` 与 `conda` 字段使用自动识别候选（选择框）：
+  - 模型来源：`models/__init__.py` 中 `name_to_model_class`
+  - conda 来源：本机 `conda env list`
+- 编辑空白 `new` 行后，按 `n` 部署新实例
+- 编辑已有实例行后，按 `r` 可按编辑后的配置重启
 
-# 使用默认参数启动
-./ms start my_server
-```
+### 快捷键
 
-**启动流程：**
-1. 脚本会自动检测可用的 Conda 环境
-2. 交互式选择要使用的 Conda 环境
-3. 在后台启动服务并等待初始化完成（最长 30 分钟）
-4. 脚本会监控日志，当检测到 "Test Successfully!" 时认为启动成功
-5. 启动成功后会在 `logs/<实例名>/` 目录下保存配置、PID 和日志文件
+- `e`: 编辑当前单元格
+- `n`: 部署空白新实例行
+- `s`: 停止实例（含二次确认）
+- `r`: 重启实例（含二次确认）
+- `d`: 删除实例（含二次确认）
+- `l`: 日志跟随开关
+- `q`: 退出
 
-#### 2. 查看状态 (`status`)
+### 命令行模式（兼容保留）
 
-查看服务实例的运行状态。
-
-```bash
-# 查看所有实例状态
-./ms status
-
-# 查看指定实例状态
-./ms status <实例名>
-```
-
-**输出信息包括：**
-- 实例名
-- 运行状态（运行中/已停止）
-- PID
-- Conda 环境
-- 模型名称
-- 端口号
-- GPU ID
-
-**注意：** 查看单个实例状态时，还会显示权重路径（如果配置了的话）
-
-#### 3. 查看日志 (`logs`)
-
-实时查看指定实例的日志输出。
+仍支持原有命令行用法（带参数时走 CLI）：
 
 ```bash
-./ms logs <实例名>
-```
-
-按 `CTRL+C` 停止查看日志。
-
-#### 4. 停止服务 (`stop`)
-
-停止一个正在运行的服务实例。
-
-```bash
-./ms stop <实例名>
-```
-
-#### 5. 重启服务 (`restart`)
-
-重启一个服务实例，会使用原有的配置（包括 Conda 环境、模型、端口、GPU、权重路径等）。
-
-```bash
-./ms restart <实例名>
-```
-
-**注意：** 重启时会自动使用之前保存的所有配置参数，无需重新指定。
-
-#### 6. 删除实例 (`delete`)
-
-停止并彻底删除一个实例的所有数据（包括配置和日志）。
-
-```bash
-./ms delete <实例名>
-```
-
-**注意：** 此操作会要求确认，删除后无法恢复。
-
-### 使用示例
-
-```bash
-# 1. 启动第一个服务实例
-./ms start qwen_server_1 -m Qwen2.5-VL-7B -p 8001 -g 0
-
-# 2. 启动第二个服务实例（使用不同的 GPU 和端口，并指定权重路径）
-./ms start qwen_server_2 -m Qwen3-14B -p 8002 -g 1 -w /path/to/weights
-
-# 3. 查看所有实例状态
-./ms status
-
-# 4. 查看第一个实例的日志
-./ms logs qwen_server_1
-
-# 5. 重启第一个实例
-./ms restart qwen_server_1
-
-# 6. 停止第二个实例
-./ms stop qwen_server_2
-
-# 7. 删除第一个实例
-./ms delete qwen_server_1
+./bin/ms start <实例名> -m <模型名> -p <端口> -g <GPU_ID> -e <conda_env> [-w <weight_path>]
+./bin/ms stop <实例名>
+./bin/ms restart <实例名>
+./bin/ms status [实例名]
+./bin/ms logs <实例名>
+./bin/ms delete <实例名>
 ```
 
 ### 文件结构
