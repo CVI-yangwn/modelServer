@@ -7,6 +7,7 @@ openai
 opencv-python
 termcolor
 accelerate
+textual
 qwen:
     qwen_vl_utils
 intern:
