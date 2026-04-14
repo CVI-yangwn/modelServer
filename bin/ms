@@ -6,11 +6,12 @@ PROJECT_DIR="$( cd "$( dirname "${BASH_SOURCE[0]}" )/.." &> /dev/null && pwd )"
 cd "${PROJECT_DIR}"
 
 if [[ $# -eq 0 ]]; then
-    if python -c "import textual" >/dev/null 2>&1; then
+    if python -c "import textual, pynvml" >/dev/null 2>&1; then
         exec python "bin/ms_tui.py"
     fi
-    echo "未检测到 textual 依赖，已回退到命令模式。请先安装 requirements.txt 中的新依赖以启用 TUI。"
-    exec python "bin/ms_cli.py" --help
+    echo "错误: 启动 TUI 需要强制依赖 textual + pynvml。"
+    echo "请先安装: pip install -r modelServer/requirements.txt"
+    exit 1
 fi
 
 exec python "bin/ms_cli.py" "$@"

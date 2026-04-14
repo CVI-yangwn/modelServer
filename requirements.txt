@@ -8,6 +8,7 @@ opencv-python
 termcolor
 accelerate
 textual
+pynvml
 qwen:
     qwen_vl_utils
 intern:
