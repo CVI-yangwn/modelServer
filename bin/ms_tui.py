@@ -4,6 +4,7 @@ import pwd
 import subprocess
 import sys
 import time
+import threading
 from pathlib import Path
 from typing import Optional
 
@@ -22,6 +23,8 @@ from textual.message import Message
 from textual.reactive import reactive
 from textual.screen import ModalScreen
 from textual.widgets import Button, DataTable, Footer, Header, Input, Label, Select, Static
+from rich.markup import escape
+from rich.text import Text
 
 CURRENT_DIR = Path(__file__).resolve().parent
 PROJECT_DIR = CURRENT_DIR.parent
@@ -101,6 +104,96 @@ class ConfirmDialog(ModalScreen[bool]):
         self.dismiss(False)
 
 
+class CellEditDialog(ModalScreen[Optional[str]]):
+    def __init__(self, title: str, initial_value: str):
+        super().__init__()
+        self._title = title
+        self._initial_value = initial_value
+
+    def compose(self) -> ComposeResult:
+        with Container(id="confirm_dialog"):
+            yield Label(self._title)
+            yield Input(value=self._initial_value, id="cell_input")
+            with Horizontal():
+                yield Button("取消", id="cancel", variant="default")
+                yield Button("保存", id="save", variant="primary")
+
+    def on_mount(self) -> None:
+        self.query_one("#cell_input", Input).focus()
+
+    @on(Button.Pressed, "#save")
+    def _save(self) -> None:
+        value = self.query_one("#cell_input", Input).value
+        self.dismiss(value)
+
+    @on(Button.Pressed, "#cancel")
+    def _cancel(self) -> None:
+        self.dismiss(None)
+
+    def on_key(self, event) -> None:
+        if event.key == "enter":
+            self._save()
+            event.stop()
+        elif event.key == "escape":
+            self._cancel()
+            event.stop()
+
+
+class ChoiceEditDialog(ModalScreen[Optional[str]]):
+    BINDINGS = [
+        Binding("enter", "submit_choice", "保存"),
+        Binding("escape", "cancel_choice", "取消"),
+    ]
+
+    def __init__(self, title: str, options: list[str], initial_value: str):
+        super().__init__()
+        self._title = title
+        self._options = options
+        self._initial_value = initial_value
+        self._auto_commit_enabled = False
+
+    def compose(self) -> ComposeResult:
+        with Container(id="confirm_dialog"):
+            yield Label(self._title)
+            select_options = [(item, item) for item in self._options]
+            default = self._initial_value if self._initial_value in self._options else (self._options[0] if self._options else Select.BLANK)
+            yield Select(select_options, value=default, id="choice_select")
+            with Horizontal():
+                yield Button("取消", id="cancel", variant="default")
+                yield Button("保存", id="save", variant="primary")
+
+    def on_mount(self) -> None:
+        self.query_one("#choice_select", Select).focus()
+        # 避免初始渲染阶段误触发 changed 事件导致弹窗立即关闭。
+        self.set_timer(0.05, self._enable_auto_commit)
+
+    def _enable_auto_commit(self) -> None:
+        self._auto_commit_enabled = True
+
+    @on(Button.Pressed, "#save")
+    def _save(self) -> None:
+        value = self.query_one("#choice_select", Select).value
+        self.dismiss("" if value is Select.BLANK else str(value))
+
+    @on(Button.Pressed, "#cancel")
+    def _cancel(self) -> None:
+        self.dismiss(None)
+
+    @on(Select.Changed, "#choice_select")
+    def _auto_save_on_select(self, event: Select.Changed) -> None:
+        # 在下拉中按 Enter 选中后会触发 changed，直接保存关闭。
+        if not self._auto_commit_enabled:
+            return
+        value = event.value
+        self.dismiss("" if value is Select.BLANK else str(value))
+
+    def action_submit_choice(self) -> None:
+        self._save()
+
+    def action_cancel_choice(self) -> None:
+        self._cancel()
+
+
 class MsTuiApp(App):
     CSS = """
     Screen {
@@ -128,14 +221,9 @@ class MsTuiApp(App):
     #right {
         width: 40%;
     }
-    #deploy_form {
-        border: solid gray;
-        height: 50%;
-        padding: 1;
-    }
     #log_panel {
         border: solid gray;
-        height: 50%;
+        height: 100%;
         padding: 1;
     }
     #status_bar {
@@ -154,11 +242,20 @@ class MsTuiApp(App):
     .field {
         margin-bottom: 1;
     }
+    .row {
+        height: auto;
+        margin-bottom: 1;
+    }
+    .half {
+        width: 1fr;
+        margin-right: 1;
+    }
     """
 
     BINDINGS = [
         Binding("q", "quit", "退出"),
         Binding("n", "deploy", "部署"),
+        Binding("e", "edit_cell", "编辑单元格"),
         Binding("s", "stop_selected", "停止"),
         Binding("r", "restart_selected", "重启"),
         Binding("d", "delete_selected", "删除"),
@@ -173,6 +270,22 @@ class MsTuiApp(App):
         self.manager = MsManager(PROJECT_DIR)
         self._row_key_to_name = {}
         self._row_index_to_name = {}
+        self._monitor_lock = threading.Lock()
+        self._monitor_paused = False
+        self._monitor_stop = False
+        self._cached_system_stats = "加载中..."
+        self._cached_gpu_rows: list[tuple[str, str, str, str, str, str, str]] = []
+        self._edit_lock_until = 0.0
+        self._instances_cache = []
+        self._edited_rows: dict[str, dict[str, str]] = {}
+        self._draft_row = {
+            "name": "",
+            "model": self.manager.default_model_name,
+            "port": str(self.manager.default_port),
+            "gpu_id": str(self.manager.default_gpu_id),
+            "conda_env": "",
+            "weight_path": "",
+        }
 
     def compose(self) -> ComposeResult:
         yield Header(show_clock=True)
@@ -186,55 +299,147 @@ class MsTuiApp(App):
                     yield Label("GPU 进程")
                     yield DataTable(id="gpu_proc_table")
             with Vertical(id="right"):
-                with Container(id="deploy_form"):
-                    yield Label("部署配置")
-                    model_options = [(m, m) for m in self.manager.get_registered_models()]
-                    env_options = [(e, e) for e in self.manager.get_conda_envs()]
-                    default_model = self.manager.default_model_name
-                    default_env = env_options[0][1] if env_options else Select.BLANK
-                    yield Select(model_options, value=default_model, id="model", classes="field")
-                    yield Input(placeholder="实例名", id="instance_name", classes="field")
-                    yield Input(value=self.manager.default_port, placeholder="端口", id="port", classes="field")
-                    yield Input(value=self.manager.default_gpu_id, placeholder="GPU ID", id="gpu_id", classes="field")
-                    yield Select(env_options, value=default_env, id="conda_env", classes="field")
-                    yield Input(placeholder="权重路径（可空）", id="weight_path", classes="field")
-                    yield Button("部署 (n)", id="deploy_btn", variant="primary")
                 with Container(id="log_panel"):
-                    yield Label("日志预览（选中实例）")
+                    yield Label("日志预览（选中实例） | e:编辑单元格 n:部署空白行")
                     yield Static("暂无日志", id="log_view")
         yield Static("就绪", id="status_bar")
         yield Footer()
 
     def on_mount(self) -> None:
         table = self.query_one("#instance_table", DataTable)
-        table.add_columns("", "实例名", "状态", "PID", "模型", "端口", "GPU", "Conda")
+        table.add_columns("", "实例名", "模型", "端口", "GPU", "Conda", "路径", "状态", "PID")
         gpu_table = self.query_one("#gpu_proc_table", DataTable)
         gpu_table.add_columns("GPU", "PID", "USER", "SM", "CPU", "TIME", "COMMAND")
-        self.refresh_instances()
-        self.set_interval(2, self.refresh_instances)
+        monitor_thread = threading.Thread(target=self._monitor_loop, daemon=True)
+        monitor_thread.start()
+        self.refresh_instances(force_table_refresh=True)
+        self.set_interval(1, self._refresh_runtime_panels_tick)
+
+    def on_unmount(self) -> None:
+        self._monitor_stop = True
 
     def post_status(self, text: str) -> None:
         self.query_one("#status_bar", Static).update(text)
 
-    def refresh_instances(self) -> None:
+    def _set_log_view(self, log_text: str) -> None:
+        # 强制按纯文本渲染，彻底避免 Rich markup 解析报错。
+        self.query_one("#log_view", Static).update(Text(log_text))
+
+    def _refresh_runtime_panels_tick(self) -> None:
+        self._refresh_side_panels_only()
+
+    def refresh_instances(self, force_table_refresh: bool = False) -> None:
+        if not force_table_refresh and self._is_editing_form():
+            self._refresh_side_panels_only()
+            return
+
         table = self.query_one("#instance_table", DataTable)
+        cursor_name_before = None
+        cursor_row = getattr(table, "cursor_row", None)
+        if isinstance(cursor_row, int):
+            cursor_name_before = self._row_index_to_name.get(cursor_row)
+
         instances = self.manager.list_instances()
+        self._instances_cache = instances
         table.clear()
         self._row_key_to_name.clear()
         self._row_index_to_name.clear()
+        cursor_row_after = None
         for idx, item in enumerate(instances):
+            row_conf = self._get_row_config(item.name)
             pid = str(item.pid) if item.pid else "N/A"
             row_key = f"row-{idx}"
             selected_mark = "☑" if item.name == self.selected_instance else "☐"
-            table.add_row(selected_mark, item.name, item.state, pid, item.model, item.port, item.gpu_id, item.conda_env, key=row_key)
+            table.add_row(
+                selected_mark,
+                escape(row_conf["name"]),
+                escape(row_conf["model"]),
+                escape(row_conf["port"]),
+                escape(row_conf["gpu_id"]),
+                escape(row_conf["conda_env"]),
+                escape(row_conf["weight_path"]),
+                escape(item.state),
+                escape(pid),
+                key=row_key,
+            )
             self._row_key_to_name[row_key] = item.name
             self._row_index_to_name[idx] = item.name
+            if cursor_name_before and item.name == cursor_name_before:
+                cursor_row_after = idx
+
+        # 固定追加空白实例行，供直接编辑后部署。
+        new_row_idx = len(instances)
+        table.add_row(
+            "□",
+            escape(self._draft_row["name"]),
+            escape(self._draft_row["model"]),
+            escape(self._draft_row["port"]),
+            escape(self._draft_row["gpu_id"]),
+            escape(self._draft_row["conda_env"]),
+            escape(self._draft_row["weight_path"]),
+            "new",
+            "-",
+            key="row-new",
+        )
+        self._row_index_to_name[new_row_idx] = "__new__"
 
         if self.selected_instance:
             log_text = self.manager.read_log_tail(self.selected_instance, 60) if self.log_follow else "日志跟随已关闭"
-            self.query_one("#log_view", Static).update(log_text)
-        self.query_one("#system_stats", Static).update(self._build_system_stats_text())
-        self._refresh_gpu_process_table()
+            self._set_log_view(log_text)
+        with self._monitor_lock:
+            system_stats = self._cached_system_stats
+            gpu_rows = list(self._cached_gpu_rows)
+        self.query_one("#system_stats", Static).update(system_stats)
+        self._render_gpu_process_table(gpu_rows)
+
+    def _refresh_side_panels_only(self) -> None:
+        if self.selected_instance:
+            log_text = self.manager.read_log_tail(self.selected_instance, 60) if self.log_follow else "日志跟随已关闭"
+            self._set_log_view(log_text)
+        with self._monitor_lock:
+            system_stats = self._cached_system_stats
+            gpu_rows = list(self._cached_gpu_rows)
+        self.query_one("#system_stats", Static).update(system_stats)
+        self._render_gpu_process_table(gpu_rows)
+
+    def _get_row_config(self, instance_name: str) -> dict[str, str]:
+        instance = next((i for i in self._instances_cache if i.name == instance_name), None)
+        base = {
+            "name": instance_name,
+            "model": instance.model if instance else "",
+            "port": str(instance.port) if instance else "",
+            "gpu_id": str(instance.gpu_id) if instance else "",
+            "conda_env": instance.conda_env if instance else "",
+            "weight_path": instance.weight_path if instance else "",
+        }
+        override = self._edited_rows.get(instance_name, {})
+        for k, v in override.items():
+            base[k] = v
+        return base
+
+    def _is_editing_form(self) -> bool:
+        now = time.monotonic()
+        if now < self._edit_lock_until:
+            return True
+        return self.screen.is_modal
+
+    def _touch_edit_lock(self, seconds: float = 3.0) -> None:
+        self._edit_lock_until = max(self._edit_lock_until, time.monotonic() + seconds)
+
+    def _monitor_loop(self) -> None:
+        while not self._monitor_stop:
+            if self._monitor_paused:
+                time.sleep(0.2)
+                continue
+            try:
+                stats = self._build_system_stats_text()
+                rows = self._gpu_process_rows()
+                with self._monitor_lock:
+                    self._cached_system_stats = stats
+                    self._cached_gpu_rows = rows
+            except Exception:
+                pass
+            time.sleep(1)
 
     def _build_system_stats_text(self) -> str:
         lines = []
@@ -345,14 +550,27 @@ class MsTuiApp(App):
             return ["未检测到 nvidia-smi（或 GPU 不可用）"]
 
     def _refresh_gpu_process_table(self) -> None:
+        with self._monitor_lock:
+            rows = list(self._cached_gpu_rows)
+        self._render_gpu_process_table(rows)
+
+    def _render_gpu_process_table(self, rows: list[tuple[str, str, str, str, str, str, str]]) -> None:
         table = self.query_one("#gpu_proc_table", DataTable)
         table.clear()
-        rows = self._gpu_process_rows()
         if not rows:
             table.add_row("-", "-", "-", "-", "-", "-", "无 GPU 进程")
             return
         for row in rows:
-            table.add_row(*row)
+            gpu_id, pid, user, sm_cell, cpu_cell, etime, command = row
+            table.add_row(
+                escape(gpu_id),
+                escape(pid),
+                escape(user),
+                sm_cell,
+                cpu_cell,
+                escape(etime),
+                escape(command),
+            )
 
     def _gpu_process_rows(self) -> list[tuple[str, str, str, str, str, str, str]]:
         # 通过 query-compute-apps 获取稳定的 pid 和 gpu_id，再结合 pmon 补 SM。
@@ -420,16 +638,18 @@ class MsTuiApp(App):
         return (sm_num, cpu_num)
 
     def _parse_pct_from_cell(self, value: str) -> float:
-        clean = (
-            value.replace("[red]", "")
-            .replace("[/red]", "")
-            .replace("[yellow]", "")
-            .replace("[/yellow]", "")
-            .replace("[green]", "")
-            .replace("[/green]", "")
-            .replace("%", "")
-            .strip()
-        )
+        clean_chars = []
+        in_tag = False
+        for ch in value:
+            if ch == "[":
+                in_tag = True
+                continue
+            if ch == "]":
+                in_tag = False
+                continue
+            if not in_tag:
+                clean_chars.append(ch)
+        clean = "".join(clean_chars).replace("%", "").strip()
         try:
             return float(clean)
         except Exception:
@@ -536,37 +756,106 @@ class MsTuiApp(App):
     @on(DataTable.RowSelected, "#instance_table")
     def on_row_selected(self, event: DataTable.RowSelected) -> None:
         row_key = str(event.row_key)
-        self.selected_instance = self._row_key_to_name.get(row_key, "")
-        if self.selected_instance:
-            self.query_one("#instance_name", Input).value = self.selected_instance
-            self.query_one("#log_view", Static).update(self.manager.read_log_tail(self.selected_instance, 60))
-            self.refresh_instances()
+        selected_name = self._row_key_to_name.get(row_key, "")
+        if selected_name:
+            self.selected_instance = selected_name
+            self._set_log_view(self.manager.read_log_tail(self.selected_instance, 60))
 
     @on(DataTable.RowHighlighted, "#instance_table")
     def on_row_highlighted(self, event: DataTable.RowHighlighted) -> None:
         row_key = str(event.row_key)
         highlighted_name = self._row_key_to_name.get(row_key, "")
-        if highlighted_name and highlighted_name != self.selected_instance:
+        if highlighted_name:
             self.selected_instance = highlighted_name
-            self.query_one("#instance_name", Input).value = highlighted_name
-            self.query_one("#log_view", Static).update(self.manager.read_log_tail(highlighted_name, 60))
-            self.refresh_instances()
 
-    @on(Button.Pressed, "#deploy_btn")
-    def on_deploy_pressed(self) -> None:
-        self.action_deploy()
+    def _current_row_target(self) -> tuple[str, Optional[str]]:
+        table = self.query_one("#instance_table", DataTable)
+        row_idx = getattr(table, "cursor_row", None)
+        if not isinstance(row_idx, int):
+            return "none", None
+        name = self._row_index_to_name.get(row_idx)
+        if name == "__new__":
+            return "new", None
+        if name:
+            return "existing", name
+        return "none", None
 
-    def _get_form_values(self):
-        model = str(self.query_one("#model", Select).value or "").strip()
-        instance_name = self.query_one("#instance_name", Input).value.strip()
-        port = self.query_one("#port", Input).value.strip() or self.manager.default_port
-        gpu_id = self.query_one("#gpu_id", Input).value.strip() or self.manager.default_gpu_id
-        conda_env = str(self.query_one("#conda_env", Select).value or "").strip()
-        weight_path = self.query_one("#weight_path", Input).value.strip()
-        return model, instance_name, port, gpu_id, conda_env, weight_path
+    def _editable_column_key(self, col_idx: int) -> Optional[str]:
+        mapping = {
+            1: "name",
+            2: "model",
+            3: "port",
+            4: "gpu_id",
+            5: "conda_env",
+            6: "weight_path",
+        }
+        return mapping.get(col_idx)
+
+    def action_edit_cell(self) -> None:
+        table = self.query_one("#instance_table", DataTable)
+        row_type, name = self._current_row_target()
+        col_idx = getattr(table, "cursor_column", None)
+        if not isinstance(col_idx, int):
+            self.post_status("请先将光标移动到可编辑列")
+            return
+        field = self._editable_column_key(col_idx)
+        if not field:
+            self.post_status("当前列不可编辑")
+            return
+
+        if row_type == "new":
+            initial = self._draft_row.get(field, "")
+        elif row_type == "existing" and name:
+            initial = self._get_row_config(name).get(field, "")
+        else:
+            self.post_status("请先将光标移动到实例行")
+            return
+
+        title = f"编辑 {field}"
+        self._monitor_paused = True
+        if field in {"model", "conda_env"}:
+            if field == "model":
+                options = self.manager.get_registered_models()
+                dialog_title = "选择模型（自动识别）"
+            else:
+                options = self.manager.get_conda_envs()
+                dialog_title = "选择 Conda 环境（自动识别）"
+            if not options:
+                self._monitor_paused = False
+                self.post_status(f"{field} 可选项为空，请先检查环境")
+                return
+            self.push_screen(
+                ChoiceEditDialog(dialog_title, options, str(initial)),
+                callback=lambda value: self._save_cell_edit(row_type, name, field, value),
+            )
+        else:
+            self.push_screen(
+                CellEditDialog(title, str(initial)),
+                callback=lambda value: self._save_cell_edit(row_type, name, field, value),
+            )
+
+    def _save_cell_edit(self, row_type: str, name: Optional[str], field: str, value: Optional[str]) -> None:
+        self._monitor_paused = False
+        if value is None:
+            self.post_status("已取消编辑")
+            return
+        value = value.strip()
+        if row_type == "new":
+            self._draft_row[field] = value
+        elif row_type == "existing" and name:
+            override = self._edited_rows.setdefault(name, {})
+            override[field] = value
+        self._touch_edit_lock(1.0)
+        self.refresh_instances(force_table_refresh=True)
 
     def action_deploy(self) -> None:
-        model, instance_name, port, gpu_id, conda_env, weight_path = self._get_form_values()
+        # 对空白行执行部署：填完最后一行后按 n 即可部署。
+        model = self._draft_row["model"]
+        instance_name = self._draft_row["name"]
+        port = self._draft_row["port"] or str(self.manager.default_port)
+        gpu_id = self._draft_row["gpu_id"] or str(self.manager.default_gpu_id)
+        conda_env = self._draft_row["conda_env"]
+        weight_path = self._draft_row["weight_path"]
         if not instance_name:
             self.post_status("部署失败：实例名不能为空")
             return
@@ -584,19 +873,20 @@ class MsTuiApp(App):
         )
         self.selected_instance = instance_name
         self.post_status(msg)
-        self.refresh_instances()
+        self._draft_row["name"] = ""
+        self._draft_row["weight_path"] = ""
+        self.refresh_instances(force_table_refresh=True)
 
     def _require_selection(self) -> Optional[str]:
         # 优先使用当前光标所在行，满足“光标到了就能操作”。
-        table = self.query_one("#instance_table", DataTable)
-        cursor_row = getattr(table, "cursor_row", None)
-        if isinstance(cursor_row, int):
-            name_from_cursor = self._row_index_to_name.get(cursor_row)
-            if name_from_cursor:
-                if name_from_cursor != self.selected_instance:
-                    self.selected_instance = name_from_cursor
-                    self.refresh_instances()
-                return name_from_cursor
+        row_type, name_from_cursor = self._current_row_target()
+        if row_type == "existing" and name_from_cursor:
+            if name_from_cursor != self.selected_instance:
+                self.selected_instance = name_from_cursor
+            return name_from_cursor
+        if row_type == "new":
+            self.post_status("当前是空白新实例行，请使用 n 部署")
+            return None
 
         if self.selected_instance:
             return self.selected_instance
@@ -607,37 +897,73 @@ class MsTuiApp(App):
         name = self._require_selection()
         if not name:
             return
+        self._monitor_paused = True
+        self.push_screen(
+            ConfirmDialog("确认停止", f"确定要停止实例 `{name}` 吗？"),
+            callback=lambda confirmed: self._do_stop_selected(name, confirmed),
+        )
+
+    def _do_stop_selected(self, name: str, confirmed: bool) -> None:
+        self._monitor_paused = False
+        if not confirmed:
+            self.post_status("已取消停止")
+            return
         _, msg = self.manager.stop_instance(name)
         self.post_status(msg)
-        self.refresh_instances()
+        self.refresh_instances(force_table_refresh=True)
 
     def action_restart_selected(self) -> None:
         name = self._require_selection()
         if not name:
             return
+        self._monitor_paused = True
         self.push_screen(
             ConfirmDialog("确认重启", f"确定要重启实例 `{name}` 吗？"),
             callback=lambda confirmed: self._do_restart_selected(name, confirmed),
         )
 
     def _do_restart_selected(self, name: str, confirmed: bool) -> None:
+        self._monitor_paused = False
         if not confirmed:
             self.post_status("已取消重启")
             return
-        _, msg = self.manager.restart_instance(name, wait_for_ready=False)
-        self.post_status(msg)
-        self.refresh_instances()
+        row_conf = self._get_row_config(name)
+        model = row_conf["model"]
+        instance_name = row_conf["name"] or name
+        port = row_conf["port"] or str(self.manager.default_port)
+        gpu_id = row_conf["gpu_id"] or str(self.manager.default_gpu_id)
+        conda_env = row_conf["conda_env"]
+        weight_path = row_conf["weight_path"]
+        if not conda_env:
+            self.post_status("重启失败：Conda 环境不能为空")
+            return
+        # 支持编辑后重启：允许实例名、端口、GPU 等参数被修改。
+        self.manager.stop_instance(name)
+        ok, msg = self.manager.start_instance(
+            instance_name=instance_name or name,
+            model_name=model,
+            port=port,
+            gpu_id=gpu_id,
+            conda_env_name=conda_env,
+            weight_path=weight_path,
+            wait_for_ready=False,
+        )
+        self.selected_instance = instance_name or name
+        self.post_status(msg if ok else f"重启失败: {msg}")
+        self.refresh_instances(force_table_refresh=True)
 
     def action_delete_selected(self) -> None:
         name = self._require_selection()
         if not name:
             return
+        self._monitor_paused = True
         self.push_screen(
             ConfirmDialog("确认删除", f"确定要删除实例 `{name}` 吗？此操作不可恢复。"),
             callback=lambda confirmed: self._do_delete_selected(name, confirmed),
         )
 
     def _do_delete_selected(self, name: str, confirmed: bool) -> None:
+        self._monitor_paused = False
         if not confirmed:
             self.post_status("已取消删除")
             return
@@ -645,7 +971,7 @@ class MsTuiApp(App):
         if self.selected_instance == name:
             self.selected_instance = ""
         self.post_status(msg)
-        self.refresh_instances()
+        self.refresh_instances(force_table_refresh=True)
 
     def action_toggle_log_follow(self) -> None:
         self.log_follow = not self.log_follow
